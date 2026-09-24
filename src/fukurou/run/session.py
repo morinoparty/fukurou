@@ -14,6 +14,7 @@ from fukurou.result.recorder import RunRecorder
 from fukurou.run.artifacts import ArtifactCollector, session_client_log, session_server_log
 from fukurou.run.isolation import PLAYER_MISSING, reset_commands
 from fukurou.runner.client import ClientDiedError
+from fukurou.runner.client_startup import startup_failure
 from fukurou.runner.log_window import LogWindow
 from fukurou.runner.player_session import PlayerSession
 from fukurou.runner.process import GameProcessError, tail_log
@@ -106,6 +107,9 @@ class GameSession:
         # 同じセッションでの再参加でも前回の "joined the game" に一致しないよう、起動前の位置から見る
         probe = LogWindow(self.server.log_path)
         probe.mark()
+        # クライアント自身のログ。描画バックエンドを作れず止まった等を早めに見つける（起動で latest.log は作り直される）
+        client_log = LogWindow(player.latest_log)
+        client_log.mark()
         logger.info("%s: starting the client", name)
         player.start(self.server.port)
         self.launches[name] = self.launches.get(name, 0) + 1
@@ -119,6 +123,9 @@ class GameSession:
             except ClientDiedError:
                 logger.error("%s client output (last lines):\n%s", name, tail_log(player.launch_log))
                 raise
+            failure = startup_failure(client_log.read())
+            if failure:
+                raise GameProcessError(f"{name}'s client cannot start: {failure}")
             self.server.check_alive()
             self.sleep(JOIN_POLL_SECONDS)
         logger.info("%s joined", name)

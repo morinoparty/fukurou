@@ -119,7 +119,7 @@ At least one of `suite`, `scenarios`, `scenario-file` and `scenario` must be set
 | `plugins-dir` | | `${{ github.workspace }}` | Directory that contains the plugin jars under test. |
 | `plugins` | | `*.jar` | Glob patterns inside `plugins-dir`, separated by newlines or commas. An empty string installs no plugins. |
 | `dependencies` | | | YAML list of extra plugins to download. See [Dependencies](#dependencies). |
-| `server-properties` | | | Extra `server.properties` lines, one `key=value` per line. They override fukurou's defaults (a flat world, peaceful difficulty, offline mode) and a `server.properties` inside `server-files`. `server-ip`, `server-port`, `enable-rcon`, `rcon.port`, `rcon.password` and `max-players` are managed by fukurou and are ignored with a warning. |
+| `server-properties` | | | Extra `server.properties` lines, one `key=value` per line. They override fukurou's defaults (a flat world, peaceful difficulty, offline mode, whitelist off) and a `server.properties` inside `server-files`. `server-ip`, `server-port`, `enable-rcon`, `rcon.port`, `rcon.password` and `max-players` are managed by fukurou and are ignored with a warning. |
 | `server-files` | | | Directory whose contents are copied into the server directory before it starts (for example `plugins/MyPlugin/config.yml`). |
 | `server-build` | | newest accepted | Paper build number. Used even when its channel is less stable than `paper-channel` (with a warning). |
 | `paper-channel` | | `stable` | Least stable Paper build channel to accept: `stable`, `beta` or `alpha`. The run uses the newest build in the accepted channels and fails when the version has none. See [Paper channels](#paper-channels). |
