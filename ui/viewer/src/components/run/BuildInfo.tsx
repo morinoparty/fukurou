@@ -1,6 +1,19 @@
 import type { ReactNode } from "react";
+import { css } from "styled-system/css";
 import type { ResultV1 } from "../../contract";
 import { formatDateTime, formatDuration, shortHash } from "../../lib/format";
+import { eyebrow, panelStyle } from "../../styles";
+import { Hint } from "../Hint";
+
+const list = css(panelStyle, {
+  p: "4",
+  display: "grid",
+  columnGap: "6",
+  rowGap: "3",
+  gridTemplateColumns: { base: "minmax(0, 1fr)", sm: "repeat(2, minmax(0, 1fr))", lg: "repeat(3, minmax(0, 1fr))" },
+});
+const sub = css({ fontSize: "xs", color: "fg.muted", wordBreak: "break-all" });
+const hash = css({ cursor: "help", borderRadius: "item" });
 
 interface BuildInfoProps {
   result: ResultV1;
@@ -10,7 +23,7 @@ interface BuildInfoProps {
 export function BuildInfo({ result }: BuildInfoProps) {
   const { minecraft, java, fukurou, scenario, ci } = result;
   return (
-    <dl className="grid gap-x-6 gap-y-3 rounded-lg border border-zinc-200 bg-white p-4 text-sm sm:grid-cols-2 lg:grid-cols-3 dark:border-zinc-800 dark:bg-zinc-900">
+    <dl className={list}>
       <Item label="Minecraft">
         {minecraft.version} ({minecraft.server}
         {minecraft.build !== null && ` build ${minecraft.build}`}
@@ -23,8 +36,13 @@ export function BuildInfo({ result }: BuildInfoProps) {
       {scenario && (
         <Item label="Scenario">
           {scenario.name}
-          <div className="break-all text-xs text-zinc-500">
-            {scenario.source} · <code title={scenario.sha256}>sha256 {shortHash(scenario.sha256, 12)}</code>
+          <div className={sub}>
+            {scenario.source} ·{" "}
+            <Hint content={<code className={css({ wordBreak: "break-all" })}>{scenario.sha256}</code>}>
+              <code className={hash} tabIndex={0}>
+                sha256 {shortHash(scenario.sha256, 12)}
+              </code>
+            </Hint>
           </div>
         </Item>
       )}
@@ -35,7 +53,7 @@ export function BuildInfo({ result }: BuildInfoProps) {
       {ci && (
         <Item label="CI">
           {ci.repository ?? "–"}
-          <div className="break-all text-xs text-zinc-500">
+          <div className={sub}>
             {ci.ref && `${ci.ref} · `}
             {ci.sha && <code title={ci.sha}>{shortHash(ci.sha)}</code>}
             {ci.runId && ` · run ${ci.runId}${ci.runAttempt ? ` (attempt ${ci.runAttempt})` : ""}`}
@@ -54,9 +72,9 @@ interface ItemProps {
 /** 定義リストの1項目 */
 function Item({ label, children }: ItemProps) {
   return (
-    <div className="min-w-0">
-      <dt className="text-xs uppercase tracking-wide text-zinc-500">{label}</dt>
-      <dd className="mt-0.5">{children}</dd>
+    <div className={css({ minWidth: "0" })}>
+      <dt className={eyebrow}>{label}</dt>
+      <dd className={css({ mt: "0.5" })}>{children}</dd>
     </div>
   );
 }

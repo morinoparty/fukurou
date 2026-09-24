@@ -1,3 +1,15 @@
+import { css } from "styled-system/css";
+
+const box = css({
+  bg: "bg.warning",
+  color: "fg.warning",
+  borderWidth: "1px",
+  borderStyle: "solid",
+  borderColor: "border.warning",
+  borderRadius: "panel",
+  p: "3",
+});
+
 interface WarningsProps {
   warnings: string[];
 }
@@ -6,9 +18,9 @@ interface WarningsProps {
 export function Warnings({ warnings }: WarningsProps) {
   if (warnings.length === 0) return null;
   return (
-    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
-      <p className="font-medium">Warnings</p>
-      <ul className="mt-1 list-disc space-y-0.5 pl-5">
+    <div className={box} role="status">
+      <p className={css({ fontWeight: "semibold" })}>Warnings</p>
+      <ul className={css({ mt: "1", pl: "5", listStyleType: "disc", display: "flex", flexDirection: "column", gap: "0.5" })}>
         {warnings.map((warning, index) => (
           <li key={index}>{warning}</li>
         ))}

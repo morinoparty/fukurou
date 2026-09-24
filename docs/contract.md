@@ -29,23 +29,23 @@ Defined by the pydantic model `fukurou.result.model.ResultV1`. The generated JSO
   "fukurou": { "version": "0.1.0", "portablemc": "5.0.4" },
   "minecraft": { "version": "1.21.11", "server": "paper", "build": 130, "channel": "STABLE" },
   "java": { "server": 25 },
-  "scenario": { "name": "stamp-thinking-face", "source": "file:game-test/scenarios/stamp-thinking-face.json", "sha256": "..." },
+  "scenario": { "name": "greeting", "source": "file:scenarios/greeting.json", "sha256": "..." },
   "plugins": [
-    { "file": "MineStamp-all.jar", "sha256": "...", "name": "MineStamp", "version": "1.0", "role": "under-test", "classFileMajor": 69, "enabled": true },
+    { "file": "ExamplePlugin-all.jar", "sha256": "...", "name": "ExamplePlugin", "version": "1.0", "role": "under-test", "classFileMajor": 69, "enabled": true },
     { "file": "ProtocolLib.jar", "sha256": "...", "name": "ProtocolLib", "role": "dependency", "source": "github:dmulloy2/ProtocolLib@dev-build/ProtocolLib.jar", "enabled": true }
   ],
   "players": [ { "name": "Alice", "op": true, "joined": true } ],
   "steps": [
     { "index": 0, "on": "server", "action": "command", "label": "time set noon", "status": "passed", "durationMs": 12 },
-    { "index": 5, "on": "Alice", "action": "screenshot", "label": "stamp-thinking-face", "status": "passed", "durationMs": 800, "screenshot": "screenshots/Alice/stamp-thinking-face.png" }
+    { "index": 5, "on": "Alice", "action": "screenshot", "label": "greeting", "status": "passed", "durationMs": 800, "screenshot": "screenshots/Alice/greeting.png" }
   ],
   "failure": null,
-  "screenshots": [ { "player": "Alice", "name": "stamp-thinking-face", "path": "screenshots/Alice/stamp-thinking-face.png", "width": 1280, "height": 720, "stepIndex": 5 } ],
+  "screenshots": [ { "player": "Alice", "name": "greeting", "path": "screenshots/Alice/greeting.png", "width": 1280, "height": 720, "stepIndex": 5 } ],
   "logs": [ { "kind": "server", "path": "logs/server.log" }, { "kind": "client", "player": "Alice", "path": "logs/clients/Alice.log" } ],
   "startedAt": "2026-09-24T03:00:00Z",
   "finishedAt": "2026-09-24T03:05:12Z",
   "durationMs": 312000,
-  "ci": { "repository": "morinoparty/MineStamp", "sha": "...", "ref": "refs/pull/177/merge", "runId": "123", "runAttempt": "1", "serverUrl": "https://github.com" }
+  "ci": { "repository": "example/plugin", "sha": "...", "ref": "refs/pull/1/merge", "runId": "123", "runAttempt": "1", "serverUrl": "https://github.com" }
 }
 ```
 
@@ -77,11 +77,11 @@ runs/<id>/crash-reports/...          # only when include-logs is true
   "schemaVersion": 1,
   "generator": { "name": "fukurou-ui", "version": "0.1.0" },
   "generatedAt": "2026-09-24T03:10:00Z",
-  "title": "MineStamp abc1234",
-  "ci": { "repository": "morinoparty/MineStamp", "sha": "...", "runId": "123", "runUrl": "https://github.com/morinoparty/MineStamp/actions/runs/123" },
+  "title": "ExamplePlugin abc1234",
+  "ci": { "repository": "example/plugin", "sha": "...", "runId": "123", "runUrl": "https://github.com/example/plugin/actions/runs/123" },
   "summary": { "total": 7, "passed": 6, "failed": 1, "error": 0 },
   "players": ["Alice", "Bob"],
-  "shots": ["stamp-thinking-face"],
+  "shots": ["greeting"],
   "runs": [
     {
       "id": "paper-1.21.11",

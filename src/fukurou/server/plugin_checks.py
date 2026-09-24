@@ -49,7 +49,7 @@ class PluginIdentity:
     def owns_error(self, line: str) -> bool:
         """エラー行がこのプラグイン自身についてのものか。
 
-        依存先の名前や、名前を部分として含む別プラグイン（Core と MineStampCore など）の行を
+        依存先の名前や、名前を部分として含む別プラグイン（Core と ExampleCore など）の行を
         取り違えないよう、ファイル名の完全一致か「enabling <名前> v」でだけ結び付ける。
         """
         if f"enabling {self.log_name} v" in line:

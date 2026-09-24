@@ -91,7 +91,7 @@ class Failure(ContractModel):
 class ScreenshotInfo(ContractModel):
     player: str
     name: str
-    # 例: screenshots/Alice/stamp.png
+    # 例: screenshots/Alice/greeting.png
     path: str
     width: int
     height: int

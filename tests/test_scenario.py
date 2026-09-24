@@ -33,8 +33,8 @@ def test_routes_steps_by_target():
             {"on": "server", "action": "command", "command": "/time set noon"},
             {"on": "server", "action": "wait_for_log", "pattern": "Done"},
             {"on": "Alice", "action": "press_key", "key": "Enter"},
-            {"on": "Bob", "action": "chat", "text": "/st :thinking-face:"},
-            {"on": "Bob", "action": "screenshot", "name": "stamp"},
+            {"on": "Bob", "action": "chat", "text": "/say hello"},
+            {"on": "Bob", "action": "screenshot", "name": "greeting"},
             {"action": "wait", "seconds": 1},
             players=({"name": "Alice", "op": True}, {"name": "Bob"}),
         )
@@ -44,8 +44,8 @@ def test_routes_steps_by_target():
         ServerCommand(on="server", command="time set noon"),
         ServerWaitForLog(on="server", pattern="Done", timeout=60.0),
         PressKey(on="Alice", key="Return"),
-        Chat(on="Bob", text="/st :thinking-face:"),
-        Screenshot(on="Bob", name="stamp"),
+        Chat(on="Bob", text="/say hello"),
+        Screenshot(on="Bob", name="greeting"),
         Wait(seconds=1),
     ]
 

@@ -1,6 +1,15 @@
+import { css } from "styled-system/css";
 import type { ManifestRun, ResultV1 } from "../../contract";
 import { screenshotsOf } from "../../lib/runs";
+import { emptyBox } from "../../styles";
 import { ScreenshotThumb } from "../ScreenshotThumb";
+
+// そのマスのスクリーンショット。狭い画面と lg 以上では2列、md（列が細い）では1列
+const shotsGrid = css({
+  display: "grid",
+  gap: "2",
+  gridTemplateColumns: { base: "repeat(2, minmax(0, 1fr))", md: "minmax(0, 1fr)", lg: "repeat(2, minmax(0, 1fr))" },
+});
 
 interface PlayerCellProps {
   run: ManifestRun;
@@ -13,19 +22,19 @@ export function PlayerCell({ run, result, player }: PlayerCellProps) {
   const shots = screenshotsOf(result, player);
   const info = result.players.find((candidate) => candidate.name === player);
   return (
-    <div className="min-w-0">
+    <div className={css({ minWidth: "0" })}>
       {/* 狭い画面では列見出しが無いので、マスの中にプレイヤー名を出す */}
-      <p className="mb-1 text-xs font-medium text-zinc-500 md:hidden">{player}</p>
+      <p className={css({ mb: "1", fontSize: "xs", fontWeight: "semibold", color: "fg.muted", md: { display: "none" } })}>
+        {player}
+      </p>
       {shots.length > 0 ? (
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-1 lg:grid-cols-2">
+        <div className={shotsGrid}>
           {shots.map((shot) => (
             <ScreenshotThumb key={`${shot.name}:${shot.path}`} run={run} shot={shot} />
           ))}
         </div>
       ) : (
-        <p className="rounded-md border border-dashed border-zinc-300 p-3 text-center text-xs text-zinc-500 dark:border-zinc-700">
-          {emptyReason(info)}
-        </p>
+        <p className={emptyBox}>{emptyReason(info)}</p>
       )}
     </div>
   );

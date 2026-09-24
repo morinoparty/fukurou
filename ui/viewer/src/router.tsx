@@ -4,6 +4,7 @@ import { NotFound } from "./components/NotFound";
 import { RootLayout } from "./components/RootLayout";
 import { RouteError } from "./components/RouteError";
 import { ComparePage } from "./pages/ComparePage";
+import { LogPage } from "./pages/LogPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { RunPage } from "./pages/RunPage";
 
@@ -23,10 +24,13 @@ const overviewRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", 
 // #/runs/<id> : 1バージョン分の詳細
 const runRoute = createRoute({ getParentRoute: () => rootRoute, path: "/runs/$id", component: RunPage });
 
+// #/runs/<id>/logs/<index> : result.logs[index] のログビューア。index はプレイヤー名などを URL に入れずに済むよう配列の添字
+const logRoute = createRoute({ getParentRoute: () => rootRoute, path: "/runs/$id/logs/$logIndex", component: LogPage });
+
 // #/compare/<shot> : 同じ名前のスクリーンショットを全バージョンで並べる
 const compareRoute = createRoute({ getParentRoute: () => rootRoute, path: "/compare/$shot", component: ComparePage });
 
-const routeTree = rootRoute.addChildren([overviewRoute, runRoute, compareRoute]);
+const routeTree = rootRoute.addChildren([overviewRoute, runRoute, logRoute, compareRoute]);
 
 /**
  * ルーターを作る。

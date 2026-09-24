@@ -78,7 +78,7 @@ def test_an_interrupt_during_the_scenario_is_an_error_not_a_failure():
 def test_ci_info_is_read_from_github_actions_env():
     env = {
         "GITHUB_ACTIONS": "true",
-        "GITHUB_REPOSITORY": "morinoparty/MineStamp",
+        "GITHUB_REPOSITORY": "example/plugin",
         "GITHUB_SHA": "abc",
         "GITHUB_REF": "refs/pull/1/merge",
         "GITHUB_RUN_ID": "123",
@@ -87,7 +87,7 @@ def test_ci_info_is_read_from_github_actions_env():
     }
     ci = json.loads(ResultRecorder("1.21.11", env=env).build().model_dump_json(by_alias=True))["ci"]
     assert ci == {
-        "repository": "morinoparty/MineStamp",
+        "repository": "example/plugin",
         "sha": "abc",
         "ref": "refs/pull/1/merge",
         "runId": "123",

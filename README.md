@@ -201,4 +201,4 @@ The format of `result.json` and of the viewer's `manifest.json` is described in 
 
 ## Acknowledgements
 
-fukurou grew out of the in-game test of [MineStamp](https://github.com/morinoparty/MineStamp), which was based on the in-game test workflow of [sya-ri/ktAdvancements](https://github.com/sya-ri/ktAdvancements/blob/master/.github/workflows/game-test.yml): a real server and a vanilla client launched with PortableMC, run under Xvfb and driven with `xdotool`. Thank you!
+fukurou is based on the in-game test workflow of [sya-ri/ktAdvancements](https://github.com/sya-ri/ktAdvancements/blob/master/.github/workflows/game-test.yml): a real server and a vanilla client launched with PortableMC, run under Xvfb and driven with `xdotool`. Thank you!

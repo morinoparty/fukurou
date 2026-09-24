@@ -1,4 +1,27 @@
+import { css } from "styled-system/css";
 import type { Failure } from "../../contract";
+import { codeBlockStyle } from "../../styles";
+
+const box = css({
+  mt: "6",
+  p: "4",
+  bg: "bg.error",
+  color: "fg.error",
+  borderWidth: "1px",
+  borderStyle: "solid",
+  borderColor: "border.error",
+  borderRadius: "panel",
+});
+
+const message = css(codeBlockStyle, { mt: "2", fontSize: "sm" });
+
+const stepButton = css({
+  textDecoration: "underline",
+  textUnderlineOffset: "2px",
+  cursor: "pointer",
+  fontWeight: "semibold",
+  _focusVisible: { outlineStyle: "solid", outlineWidth: "2px", outlineColor: "border.error" },
+});
 
 interface FailureBoxProps {
   failure: Failure;
@@ -11,20 +34,20 @@ export function FailureBox({ failure }: FailureBoxProps) {
     document.getElementById(`step-${failure.stepIndex}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
   return (
-    <div className="mt-6 rounded-lg border border-red-300 bg-red-50 p-4 text-red-900 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
-      <p className="text-sm font-semibold">
+    <div className={box} role="alert">
+      <p className={css({ fontWeight: "semibold" })}>
         Failed during <code>{failure.phase}</code>
         {failure.stepIndex !== null && (
           <>
             {" "}
             at{" "}
-            <button type="button" onClick={scrollToStep} className="underline underline-offset-2">
+            <button type="button" onClick={scrollToStep} className={stepButton}>
               step {failure.stepIndex}
             </button>
           </>
         )}
       </p>
-      <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words text-sm">{failure.message}</pre>
+      <pre className={message}>{failure.message}</pre>
     </div>
   );
 }

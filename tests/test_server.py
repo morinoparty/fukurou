@@ -98,10 +98,10 @@ def test_plugin_check_ties_errors_only_to_the_plugin_they_are_about():
     log = (
         "[12:00:01 INFO]: [Example] Enabling Example v1.0\n"
         "[12:00:01 INFO]: [Core] Enabling Core v1\n"
-        "[12:00:02 ERROR]: Could not load plugin 'MineStampCore.jar' in folder 'plugins'\n"
+        "[12:00:02 ERROR]: Could not load plugin 'ExampleCore.jar' in folder 'plugins'\n"
         "[12:00:02 ERROR]: Error occurred while enabling Addon v1 (Is it up to date?) Example missing\n"
     )
     with pytest.raises(PluginCheckError) as caught:
-        check_plugins(lambda: log, identities("Example", "Core", "MineStampCore", "Addon"), timeout=0)
-    assert caught.value.enabled == {"Example": True, "Core": True, "MineStampCore": False, "Addon": False}
+        check_plugins(lambda: log, identities("Example", "Core", "ExampleCore", "Addon"), timeout=0)
+    assert caught.value.enabled == {"Example": True, "Core": True, "ExampleCore": False, "Addon": False}
     assert "was not enabled" not in str(caught.value)

@@ -1,29 +1,40 @@
+import { Badge, type BadgeProps } from "../chlorophyll";
+import { css } from "styled-system/css";
 import type { RunStatus, StepStatus } from "../contract";
 
 /** バッジで表せる状態。unsupported は表示できない run 用 */
 export type BadgeStatus = RunStatus | StepStatus | "unsupported";
 
-/** 状態ごとの配色。色だけに頼らないよう、文字でも状態を書く */
-const STYLES: Record<BadgeStatus, string> = {
-  passed:
-    "bg-emerald-100 text-emerald-800 ring-emerald-600/30 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-400/30",
-  failed: "bg-red-100 text-red-800 ring-red-600/30 dark:bg-red-500/15 dark:text-red-300 dark:ring-red-400/30",
-  error: "bg-amber-100 text-amber-900 ring-amber-600/30 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-400/30",
-  skipped: "bg-zinc-100 text-zinc-600 ring-zinc-500/20 dark:bg-zinc-500/15 dark:text-zinc-400 dark:ring-zinc-400/20",
-  unsupported: "bg-zinc-100 text-zinc-700 ring-zinc-500/30 dark:bg-zinc-500/15 dark:text-zinc-300 dark:ring-zinc-400/30",
+// Chlorophyll の Badge は status（success / warning / error / info）で colorPalette を切り替える。
+// passed は mori（success）、failed は red（error）、インフラ失敗の error は yellow（warning）に対応させる
+const BADGE_STATUS: Partial<Record<BadgeStatus, NonNullable<BadgeProps["status"]>>> = {
+  passed: "success",
+  failed: "error",
+  error: "warning",
 };
+
+// status に対応が無い状態（skipped / unsupported / 未知の値）は中立の gray で出す
+const neutral = css({ colorPalette: "gray" });
 
 interface StatusBadgeProps {
   status: BadgeStatus;
+  size?: BadgeProps["size"];
 }
 
-/** passed / failed / error などの状態を示す小さなラベル */
-export function StatusBadge({ status }: StatusBadgeProps) {
-  // 未知の状態が来ても落とさず、unsupported と同じ見た目で文字だけ出す
-  const style = STYLES[status] ?? STYLES.unsupported;
+/** passed / failed / error などの状態を示す小さなラベル。色だけに頼らないよう文字でも状態を書く */
+export function StatusBadge({ status, size = "sm" }: StatusBadgeProps) {
+  const badgeStatus = BADGE_STATUS[status];
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${style}`}>
+    <Badge
+      // 見出しに置く大きいバッジはページの地色（colorPalette.bg）に溶けないよう枠線付きにする
+      variant={size === "md" ? "surface" : "subtle"}
+      size={size}
+      dot
+      status={badgeStatus}
+      className={badgeStatus ? undefined : neutral}
+      data-status={status}
+    >
       {status}
-    </span>
+    </Badge>
   );
 }

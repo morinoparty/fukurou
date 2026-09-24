@@ -38,6 +38,10 @@ jobs:
 
   ui:
     runs-on: ubuntu-24.04
+    # ビューアは GitHub Packages の @morinoparty/chlorophyll-react に依存するので、パッケージの読み取り権限が要る
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -52,14 +56,21 @@ jobs:
         with:
           package_json_file: ui/viewer/package.json
 
+      # registry-url と scope を渡すと、setup-node が //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN} を
+      # ユーザー単位の .npmrc（NPM_CONFIG_USERCONFIG）に書く。pnpm はリポジトリの .npmrc にある認証情報の
+      # 環境変数を展開しないので、トークンはこちらから渡す
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: ui/viewer/pnpm-lock.yaml
+          registry-url: https://npm.pkg.github.com
+          scope: "@morinoparty"
 
       - name: Install, type-check and build the viewer
         working-directory: ui/viewer
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pnpm install --frozen-lockfile
           pnpm run typecheck

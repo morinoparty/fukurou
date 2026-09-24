@@ -8,22 +8,24 @@
     "node": "^20.19.0 || >=22.12.0"
   },
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit",
+    "codegen": "panda codegen --clean",
+    "dev": "panda codegen --clean && vite",
+    "build": "panda codegen --clean && tsc --noEmit && vite build",
+    "typecheck": "panda codegen --clean && tsc --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@morinoparty/chlorophyll-react": "0.4.8",
     "@tanstack/react-router": "1.170.38",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "4.3.3",
+    "@pandacss/dev": "1.12.1",
+    "@pandacss/preset-base": "1.12.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.1",
-    "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
     "vite": "8.3.0"
   }

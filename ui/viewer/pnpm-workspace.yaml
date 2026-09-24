@@ -1,0 +1,7 @@
+# esbuild（Panda CSS が設定ファイルの読み込みに使う）はプラットフォーム別の optional dependency で
+# バイナリを入れるため、postinstall スクリプトを走らせなくても動く
+allowBuilds:
+  esbuild: false
+# 0.4.8 は公開直後で pnpm の minimumReleaseAge に掛かるため、このバージョンだけ除外する
+minimumReleaseAgeExclude:
+  - '@morinoparty/chlorophyll-react@0.4.8'

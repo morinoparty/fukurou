@@ -1,75 +1,80 @@
+import { css } from "styled-system/css";
+import { Table } from "../../chlorophyll";
 import type { ManifestRun, StepResult } from "../../contract";
 import { assetUrl } from "../../lib/assets";
 import { formatDuration } from "../../lib/format";
+import { codeBlockStyle } from "../../styles";
 import { useLightbox } from "../lightbox/LightboxContext";
 import { StatusBadge } from "../StatusBadge";
+
+// 失敗したステップは行ごと赤く、実行されなかったステップは文字を薄くする
+const failedRow = css({ bg: "bg.error", _hover: { bg: "bg.error" } });
+const skippedRow = css({ color: "fg.disabled" });
+
+const numberCell = css({ fontVariantNumeric: "tabular-nums", color: "fg.muted", width: "1%" });
+const durationCell = css({ fontVariantNumeric: "tabular-nums", textAlign: "end", whiteSpace: "nowrap" });
+const linkButton = css({
+  fontSize: "xs",
+  color: "colorPalette.fg",
+  textDecoration: "underline",
+  textUnderlineOffset: "2px",
+  cursor: "pointer",
+});
+const stepError = css(codeBlockStyle, { mt: "1", color: "fg.error" });
 
 interface StepTimelineProps {
   run: ManifestRun;
   steps: StepResult[];
 }
 
-/** シナリオのステップを実行順に並べた表。失敗したステップは行ごと強調する */
+/** シナリオのステップを実行順に並べた表（Chlorophyll の Table）。失敗したステップは行ごと強調する */
 export function StepTimeline({ run, steps }: StepTimelineProps) {
   const openLightbox = useLightbox();
   // screenshot アクションの行から、そのステップで撮った画像を開く
   const openStepScreenshot = (step: StepResult, path: string) =>
     openLightbox({ src: assetUrl(run, path), caption: `${run.id} / step ${step.index}: ${step.label}` });
-  if (steps.length === 0) return <p className="text-sm text-zinc-500">No steps were recorded.</p>;
+  if (steps.length === 0) return <p className={css({ color: "fg.muted" })}>No steps were recorded.</p>;
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <table className="w-full min-w-[40rem] text-left text-sm">
-        <thead className="bg-zinc-100 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
-          <tr>
-            <th className="px-3 py-2">#</th>
-            <th className="px-3 py-2">On</th>
-            <th className="px-3 py-2">Action</th>
-            <th className="px-3 py-2">Label</th>
-            <th className="px-3 py-2">Status</th>
-            <th className="px-3 py-2 text-right">Duration</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-zinc-200 bg-white dark:divide-zinc-800 dark:bg-zinc-950">
-          {steps.map((step) => {
-            const screenshot = step.screenshot;
-            return (
-              <tr
-                key={step.index}
-                id={`step-${step.index}`}
-                className={`align-top ${step.status === "failed" ? "bg-red-50 dark:bg-red-500/10" : ""} ${step.status === "skipped" ? "text-zinc-400 dark:text-zinc-600" : ""}`}
-              >
-                <td className="px-3 py-2 tabular-nums text-zinc-500">{step.index}</td>
-                <td className="px-3 py-2">{step.on ?? "–"}</td>
-                <td className="px-3 py-2">
-                  <code>{step.action}</code>
-                </td>
-                <td className="px-3 py-2">
-                  <div className="break-words">{step.label}</div>
-                  {screenshot && (
-                    <button
-                      type="button"
-                      className="text-xs text-sky-700 underline-offset-2 hover:underline dark:text-sky-400"
-                      onClick={() => openStepScreenshot(step, screenshot)}
-                    >
-                      View screenshot
-                    </button>
-                  )}
-                  {step.error && (
-                    <pre className="mt-1 whitespace-pre-wrap break-words text-xs text-red-700 dark:text-red-400">
-                      {step.error}
-                    </pre>
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  <StatusBadge status={step.status} />
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">{formatDuration(step.durationMs)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <Table.Root size="sm" scrollAreaLabel="Scenario steps">
+      <Table.Header>
+        <Table.Row>
+          <Table.Head>#</Table.Head>
+          <Table.Head>On</Table.Head>
+          <Table.Head>Action</Table.Head>
+          <Table.Head>Label</Table.Head>
+          <Table.Head>Status</Table.Head>
+          <Table.Head className={css({ textAlign: "end" })}>Duration</Table.Head>
+        </Table.Row>
+      </Table.Header>
+      <Table.Body>
+        {steps.map((step) => {
+          const screenshot = step.screenshot;
+          const rowClass = step.status === "failed" ? failedRow : step.status === "skipped" ? skippedRow : undefined;
+          return (
+            <Table.Row key={step.index} id={`step-${step.index}`} className={rowClass}>
+              <Table.Cell className={numberCell}>{step.index}</Table.Cell>
+              <Table.Cell>{step.on ?? "–"}</Table.Cell>
+              <Table.Cell>
+                <code>{step.action}</code>
+              </Table.Cell>
+              <Table.Cell className={css({ minWidth: "48", wordBreak: "break-word" })}>
+                <div>{step.label}</div>
+                {screenshot && (
+                  <button type="button" className={linkButton} onClick={() => openStepScreenshot(step, screenshot)}>
+                    View screenshot
+                  </button>
+                )}
+                {step.error && <pre className={stepError}>{step.error}</pre>}
+              </Table.Cell>
+              <Table.Cell>
+                <StatusBadge status={step.status} />
+              </Table.Cell>
+              <Table.Cell className={durationCell}>{formatDuration(step.durationMs)}</Table.Cell>
+            </Table.Row>
+          );
+        })}
+      </Table.Body>
+    </Table.Root>
   );
 }

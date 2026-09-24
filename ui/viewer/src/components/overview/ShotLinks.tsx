@@ -1,4 +1,7 @@
 import { Link } from "@tanstack/react-router";
+import { css } from "styled-system/css";
+import { Button } from "../../chlorophyll";
+import { buttonLink } from "../../styles";
 
 interface ShotLinksProps {
   shots: string[];
@@ -6,25 +9,18 @@ interface ShotLinksProps {
   current?: string;
 }
 
-/** スクリーンショット名ごとの比較ページへのリンク */
+/** スクリーンショット名ごとの比較ページへのリンク。表示中のものは primary で示す */
 export function ShotLinks({ shots, current }: ShotLinksProps) {
   if (shots.length === 0) return null;
   return (
-    <nav aria-label="Compare screenshots" className="flex flex-wrap items-center gap-2 text-sm">
-      <span className="text-zinc-500">Compare:</span>
+    <nav aria-label="Compare screenshots" className={css({ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "2" })}>
+      <span className={css({ color: "fg.muted" })}>Compare:</span>
       {shots.map((shot) => (
-        <Link
-          key={shot}
-          to="/compare/$shot"
-          params={{ shot }}
-          className={`rounded-full border px-2.5 py-0.5 no-underline hover:no-underline ${
-            shot === current
-              ? "border-sky-600 bg-sky-600 text-white dark:border-sky-500 dark:bg-sky-500 dark:text-zinc-950"
-              : "border-zinc-300 text-zinc-700 hover:border-sky-500 dark:border-zinc-700 dark:text-zinc-300"
-          }`}
-        >
-          {shot}
-        </Link>
+        <Button key={shot} asChild size="sm" intent={shot === current ? "primary" : "secondary"} className={buttonLink}>
+          <Link to="/compare/$shot" params={{ shot }} aria-current={shot === current ? "page" : undefined}>
+            {shot}
+          </Link>
+        </Button>
       ))}
     </nav>
   );

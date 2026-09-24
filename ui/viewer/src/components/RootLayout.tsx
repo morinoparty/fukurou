@@ -1,23 +1,62 @@
 import { Link, Outlet } from "@tanstack/react-router";
+import { css } from "styled-system/css";
 import { useManifest } from "../manifest/useManifest";
 import { LightboxProvider } from "./lightbox/LightboxProvider";
+
+// アプリの最上位。Chlorophyll のコンポーネントが mori パレット（colorPalette.*）で描かれるようにする
+const root = css({ colorPalette: "mori", minHeight: "100vh" });
+
+const header = css({
+  position: "sticky",
+  top: "0",
+  zIndex: "sticky",
+  bg: "bg.panel",
+  borderBottomWidth: "1px",
+  borderBottomStyle: "solid",
+  borderBottomColor: "border.subtle",
+});
+
+const headerInner = css({
+  maxWidth: "7xl",
+  mx: "auto",
+  px: "4",
+  py: "3",
+  display: "flex",
+  alignItems: "center",
+  gap: "3",
+});
+
+const brand = css({
+  fontWeight: "bold",
+  color: "colorPalette.fg",
+  textDecoration: "none",
+  minWidth: "0",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  _hover: { textDecoration: "underline" },
+});
+
+const main = css({ maxWidth: "7xl", mx: "auto", px: "4", pt: "6", pb: "16" });
 
 /** 全ページ共通の枠。上部にタイトル（一覧へのリンク）を置く */
 export function RootLayout() {
   const manifest = useManifest();
   return (
-    <LightboxProvider>
-      <header className="border-b border-zinc-200 bg-white/80 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/80">
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
-          <Link to="/" className="font-semibold text-zinc-900 dark:text-zinc-100">
-            {manifest.title}
-          </Link>
-          <span className="ml-auto text-xs text-zinc-500">fukurou</span>
-        </div>
-      </header>
-      <main className="mx-auto max-w-7xl px-4 pb-16 pt-6">
-        <Outlet />
-      </main>
-    </LightboxProvider>
+    <div className={root}>
+      <LightboxProvider>
+        <header className={header}>
+          <div className={headerInner}>
+            <Link to="/" className={brand}>
+              {manifest.title}
+            </Link>
+            <span className={css({ ml: "auto", fontSize: "xs", color: "fg.muted", flexShrink: 0 })}>fukurou</span>
+          </div>
+        </header>
+        <main className={main}>
+          <Outlet />
+        </main>
+      </LightboxProvider>
+    </div>
   );
 }
