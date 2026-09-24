@@ -185,7 +185,7 @@ jobs:
           ' "$TESTS_SUMMARY"
 
   ui-smoke:
-    needs: smoke
+    needs: [versions, smoke]
     if: always()
     runs-on: ubuntu-24.04
     steps:
@@ -203,22 +203,21 @@ jobs:
         env:
           SITE_DIR: ${{ steps.site.outputs.site-dir }}
           TESTS_SUMMARY: ${{ steps.site.outputs.tests-summary }}
+          SMOKE_INCLUDE: ${{ needs.versions.outputs.smoke-include }}
         run: |
           test -f "$SITE_DIR/index.html"
           test -f "$SITE_DIR/manifest.json"
-          # smoke は latest の1バージョンだけなので、download-artifact が平置きにした1件の artifact を
-          # build_manifest.py が1つの run として読めていること（result が埋め込まれ、2 テストとも数えられていること）まで確かめる
+          # smoke は最新の stable と最新の alpha（同じなら 1 つ）。バージョンが 1 つのときは download-artifact が
+          # 平置きにした artifact を、build_manifest.py が 1 つの run として読めていることも確かめることになる。
+          # どの run にも result が埋め込まれ、各 run の 2 テストが数えられていること
           python3 -c '
-          import json, sys
+          import json, os, sys
+          runs = len(json.loads(os.environ["SMOKE_INCLUDE"]))
           manifest = json.load(open(sys.argv[1]))
           print(manifest["summary"])
-          assert manifest["summary"]["runs"]["total"] == 1, manifest["summary"]
-          assert manifest["summary"]["tests"]["total"] == 2, manifest["summary"]
-          assert manifest["runs"][0]["result"] is not None, manifest["warnings"]
+          assert manifest["summary"]["runs"]["total"] == runs, manifest["summary"]
+          assert manifest["summary"]["tests"]["total"] == 2 * runs, manifest["summary"]
+          assert all(run["result"] is not None for run in manifest["runs"]), manifest["warnings"]
+          summary = json.loads(os.environ["TESTS_SUMMARY"])
+          assert summary["total"] == 2 * runs, summary
           ' "$SITE_DIR/manifest.json"
-          echo "tests-summary output: $TESTS_SUMMARY"
-          python3 -c '
-          import json, sys
-          summary = json.loads(sys.argv[1])
-          assert summary["total"] == 2, summary
-          ' "$TESTS_SUMMARY"
