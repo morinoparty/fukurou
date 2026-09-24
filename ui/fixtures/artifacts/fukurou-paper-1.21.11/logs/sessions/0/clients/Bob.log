@@ -1,0 +1,11 @@
+[Render thread/INFO]: Setting user: Bob
+[Render thread/INFO]: Backend library: LWJGL version 3.3.3
+[Render thread/INFO]: Minecraft 1.21.11
+[Render thread/INFO]: Connecting to 127.0.0.1, 25565
+[Server thread/INFO]: Bob joined the game
+[Render thread/INFO]: [System] [CHAT] [Server] fukurou: next test
+[Render thread/INFO]: [System] [CHAT] <Alice> :thinking-face:
+[Render thread/INFO]: Saved screenshot as after-stamp.png
+[Render thread/INFO]: [System] [CHAT] [Server] fukurou: next test
+[Render thread/INFO]: Saved screenshot as failure.png
+[Render thread/INFO]: Stopping!

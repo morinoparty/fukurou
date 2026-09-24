@@ -49,18 +49,20 @@ const failureCaption = css(captionStyle, { color: "fg.error", fontWeight: "semib
 
 interface ScreenshotThumbProps {
   run: ManifestRun;
+  /** どのテストのスクリーンショットか。ライトボックスの見出しに使う */
+  testId: string;
   shot: ScreenshotInfo;
   /** サムネイルの下に出す説明。省略時はスクリーンショット名 */
   caption?: string;
 }
 
 /** スクリーンショットのサムネイル。クリックでライトボックスを開く */
-export function ScreenshotThumb({ run, shot, caption: captionText }: ScreenshotThumbProps) {
+export function ScreenshotThumb({ run, testId, shot, caption: captionText }: ScreenshotThumbProps) {
   const openLightbox = useLightbox();
   const [loaded, setLoaded] = useState(false);
   const src = assetUrl(run, shot.path);
   const isFailure = shot.name === FAILURE_SHOT;
-  const label = `${run.id} / ${shot.player} / ${shot.name}`;
+  const label = `${run.id} / ${testId} / ${shot.player} / ${shot.name}`;
 
   return (
     <figure className={css({ minWidth: "0" })}>

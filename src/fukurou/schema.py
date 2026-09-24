@@ -1,31 +1,44 @@
-"""シナリオと result.json の JSON Schema を生成する。schema/*.json はこの出力をそのまま保存したもの。"""
+"""シナリオ・スイート・result.json の JSON Schema を生成する。schema/*.json はこの出力をそのまま保存したもの。"""
 
 import json
 from typing import Any
 
-from fukurou.result.model import ResultV1
-from fukurou.scenario import Scenario
+from pydantic import BaseModel
+
+from fukurou.scenario import Scenario, Suite
 
 JSON_SCHEMA_DIALECT = "https://json-schema.org/draft/2020-12/schema"
-SCHEMA_NAMES = ("scenario", "result")
+SCHEMA_NAMES = ("scenario", "suite", "result")
+# fukurou schema <name> の出力を保存するファイル名（schema/ の下）。形が変わるとファイル名の版を上げる
+SCHEMA_FILES = {"scenario": "scenario.v2.json", "suite": "suite.v1.json", "result": "result.v2.json"}
 DESCRIPTIONS = {
-    "scenario": "A fukurou scenario: the players that join and the steps to run on the server and the clients.",
-    "result": "result.json written by fukurou run (schemaVersion 1).",
+    "scenario": "A fukurou test: the players that join, the steps to run on the server and the clients, and metadata.",
+    "suite": "A fukurou suite file: the scenarios to run and the players, fixtures and reset settings they share.",
+    "result": "result.json written by fukurou run (schemaVersion 2).",
 }
 
 
 def build_schema(name: str) -> dict[str, Any]:
     """名前に対応する JSON Schema を dict で返す。"""
-    if name == "scenario":
-        schema = Scenario.model_json_schema()
-    elif name == "result":
-        schema = ResultV1.model_json_schema(by_alias=True)
-    else:
+    if name not in SCHEMA_NAMES:
         raise ValueError(f"unknown schema: {name}")
+    schema = _model(name).model_json_schema(by_alias=True)
     # docstring 由来の説明は開発者向けの日本語なので、公開するスキーマからは取り除く
     schema = _strip_descriptions(schema)
     _require_action_tags(schema)
     return {"$schema": JSON_SCHEMA_DIALECT, "description": DESCRIPTIONS[name], **schema}
+
+
+def _model(name: str) -> type[BaseModel]:
+    if name == "scenario":
+        return Scenario
+    if name == "suite":
+        return Suite
+    # result.json のモデルは契約側（fukurou.result.model）が持つ。scenario / suite の出力だけを使う
+    # 経路（アクションの早期検証など）で読み込まずに済むよう、必要になったときに import する
+    from fukurou.result.model import ResultV2
+
+    return ResultV2
 
 
 def schema_json(name: str) -> str:

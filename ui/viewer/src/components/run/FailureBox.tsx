@@ -1,5 +1,4 @@
 import { css } from "styled-system/css";
-import type { Failure } from "../../contract";
 import { codeBlockStyle } from "../../styles";
 
 const box = css({
@@ -24,25 +23,40 @@ const stepButton = css({
 });
 
 interface FailureBoxProps {
-  failure: Failure;
+  /** run の failure（phase と message）と test の failure（stepIndex 付き）のどちらでも受ける */
+  failure: { phase: string; message: string; stepIndex?: number | null };
+  /** 見出し。既定は "Failed during <phase>"。run の失敗では "This version could not be tested" などにする */
+  title?: string;
 }
 
 /** 失敗の段階とメッセージを目立たせて表示する */
-export function FailureBox({ failure }: FailureBoxProps) {
+export function FailureBox({ failure, title }: FailureBoxProps) {
+  const stepIndex = failure.stepIndex ?? null;
   // ハッシュルーティングなので #step-N のアンカーは使えない。スクロールは JS で行う
   const scrollToStep = () => {
-    document.getElementById(`step-${failure.stepIndex}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const row = document.getElementById(`step-${stepIndex}`);
+    if (!row) return;
+    // ステップが折りたたまれたまとまりの中にあるなら、先にそのまとまりの見出しボタンで開く
+    const collapsed = row.closest<HTMLElement>("[hidden]");
+    const toggle = collapsed?.id ? document.querySelector<HTMLButtonElement>(`[aria-controls="${collapsed.id}"]`) : null;
+    if (toggle) {
+      toggle.click();
+      // 開いた後の描画を待ってからスクロールする
+      requestAnimationFrame(() => row.scrollIntoView({ behavior: "smooth", block: "center" }));
+      return;
+    }
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
   };
   return (
     <div className={box} role="alert">
       <p className={css({ fontWeight: "semibold" })}>
-        Failed during <code>{failure.phase}</code>
-        {failure.stepIndex !== null && (
+        {title ?? "Failed during"} <code>{failure.phase}</code>
+        {stepIndex !== null && (
           <>
             {" "}
             at{" "}
             <button type="button" onClick={scrollToStep} className={stepButton}>
-              step {failure.stepIndex}
+              step {stepIndex}
             </button>
           </>
         )}

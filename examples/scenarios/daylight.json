@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/morinoparty/fukurou/v2/schema/scenario.v2.json",
+  "tags": ["world"],
+  "steps": [
+    { "on": "server", "action": "command", "command": "time set noon" },
+    { "on": "server", "action": "command", "command": "weather clear" },
+    { "action": "wait", "seconds": 3 },
+    { "on": "Alice", "action": "screenshot", "name": "noon" },
+    { "on": "Alice", "action": "assert_no_log", "pattern": "\\[CHAT\\].*(Unknown( or incomplete)? command)" }
+  ]
+}

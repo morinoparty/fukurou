@@ -18,7 +18,9 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 2
+# 読み取れる result.json の schemaVersion。それ以外は "unsupported" の run として扱う（v1 の読み取りアダプタは載せない）
+RESULT_SCHEMA_VERSION = 2
 GENERATOR_NAME = "fukurou-ui"
 # pyproject.toml が読めないとき（スクリプトだけ持ち出された場合など）の版
 FALLBACK_VERSION = "0.0.0"
@@ -26,14 +28,26 @@ FALLBACK_VERSION = "0.0.0"
 MANIFEST_GLOBAL = "window.__FUKUROU_MANIFEST__"
 # 実行結果として受け付けるステータス。それ以外は error として扱う
 RUN_STATUSES = ("passed", "failed", "error")
+# テストのステータス。それ以外は error として扱う
+TEST_STATUSES = ("passed", "failed", "error", "skipped")
+# manifest の tests[].status を決める優先順位（「失敗を上に」の並び替え用）。先頭ほど強い
+TEST_STATUS_PRIORITY = ("error", "failed", "passed", "skipped")
 # shots の和集合から除外するスクリーンショット名（失敗時の自動撮影）
 FAILURE_SHOT = "failure"
 # run の id はそのままディレクトリ名と URL に使うので、安全な文字だけに限る
 SAFE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
+# テストの id（シナリオファイルの stem）。ビューアのルートと tests/<id>/ のパスになるので契約と同じ規則で検査する
+SAFE_TEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 # 契約で artifact のルートに置かれるディレクトリ。1件だけのダウンロードで平置きになったかの判定に使う
-CONTRACT_DIRS = ("screenshots", "logs", "crash-reports")
+CONTRACT_DIRS = ("tests", "logs", "crash-reports")
+# ランナーが必ず書く、run 全体のログ（artifact のルートからの相対パス）
+HARNESS_LOG = "logs/harness.log"
 # result の中でリストであるべきフィールド。型が違うと集計で落ちるので空リストに置き換える
-LIST_FIELDS = ("players", "steps", "screenshots", "logs")
+LIST_FIELDS = ("plugins", "players", "sessions", "tests", "logs")
+# tests[] の各要素の中でリストであるべきフィールド
+TEST_LIST_FIELDS = ("tags", "players", "steps", "screenshots")
+# sessions[] の各要素の中でリストであるべきフィールド
+SESSION_LIST_FIELDS = ("players", "tests", "logs")
 # artifact 名の末尾からバージョンを拾う（例: fukurou-paper-1.21.9 → 1.21.9）
 TRAILING_VERSION = re.compile(r"(\d+(?:\.\d+)+(?:-[A-Za-z0-9.]+)?)$")
 # artifact 名（<prefix>-<server>-<version>）の末尾から result.id と同じ形の id を拾う（例: fukurou-paper-1.21.9 → paper-1.21.9）
@@ -94,21 +108,65 @@ def version_from_artifact_name(name: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _normalize_lists(container: dict, keys: tuple[str, ...], where: str, artifact: str, warnings: list[str]) -> None:
+    """container[key] がリストでなければ警告して空リストに置き換える。"""
+    for key in keys:
+        if key in container and not isinstance(container[key], list):
+            warnings.append(f"{artifact}: result.json field {where}{key!r} is not a list; ignored")
+            container[key] = []
+
+
 def normalize_list_fields(result: dict, artifact: str, warnings: list[str]) -> None:
     """リストであるべきフィールドの型が違えば空リストに置き換える。
 
     将来の schemaVersion などで型が変わっても、集計やビューアが例外で止まらないようにする。
+    tests[] / sessions[] の要素がオブジェクトでなければ、その要素ごと捨てる。
     """
-    for key in LIST_FIELDS:
-        if key in result and not isinstance(result[key], list):
-            warnings.append(f"{artifact}: result.json field {key!r} is not a list; ignored")
-            result[key] = []
+    _normalize_lists(result, LIST_FIELDS, "", artifact, warnings)
+    for key, nested in (("tests", TEST_LIST_FIELDS), ("sessions", SESSION_LIST_FIELDS)):
+        entries = result.get(key)
+        if not isinstance(entries, list):
+            continue
+        kept = [entry for entry in entries if isinstance(entry, dict)]
+        if len(kept) != len(entries):
+            warnings.append(f"{artifact}: result.json field {key!r} has entries that are not objects; ignored")
+        for entry in kept:
+            _normalize_lists(entry, nested, f"{key}[].", artifact, warnings)
+        result[key] = kept
+    for test in result.get("tests") or []:
+        # logRanges はオブジェクト（パス → 行の範囲）か null
+        if test.get("logRanges") is not None and not isinstance(test["logRanges"], dict):
+            warnings.append(f"{artifact}: result.json field 'tests[].logRanges' is not an object; ignored")
+            test["logRanges"] = None
+
+
+def normalize_tests(result: dict, artifact: str, warnings: list[str]) -> None:
+    """ビューアのルートに使えない id と、run 内で重複した id のテストを捨てる。
+
+    テストの id は URL（#/tests/<id>）と tests/<id>/ のパスになるので、不正な値をそのまま載せない。
+    """
+    seen: set[str] = set()
+    kept = []
+    for test in result.get("tests") or []:
+        test_id = test.get("id")
+        if not (isinstance(test_id, str) and SAFE_TEST_ID.match(test_id)):
+            warnings.append(f"{artifact}: refused test with unusable id {test_id!r}")
+            continue
+        if test_id in seen:
+            warnings.append(f"{artifact}: duplicate test id {test_id!r}; kept the first")
+            continue
+        seen.add(test_id)
+        kept.append(test)
+    if "tests" in result:
+        result["tests"] = kept
 
 
 def sanitize_result_paths(result: dict, artifact: str, warnings: list[str]) -> None:
     """result 内の不正なパスを取り除く。
 
     ビューアが run の外のファイルを読みに行かないよう、該当エントリは埋め込む前に消す。
+    対象は tests[].screenshots, tests[].steps[].screenshot, tests[].logRanges のキー,
+    sessions[].logs とルートの logs。
     run の status は変えない（変えるとビューアの result.status 表示と summary が食い違うため）。
     警告で知らせるだけにする。
     """
@@ -116,10 +174,10 @@ def sanitize_result_paths(result: dict, artifact: str, warnings: list[str]) -> N
     def reject(path: Any) -> None:
         warnings.append(f"{artifact}: refused unsafe path in result.json: {path!r}")
 
-    for key in ("screenshots", "logs"):
-        entries = result.get(key)
+    def keep_safe_entries(container: dict, key: str) -> None:
+        entries = container.get(key)
         if not isinstance(entries, list):
-            continue
+            return
         kept = []
         for entry in entries:
             path = entry.get("path") if isinstance(entry, dict) else None
@@ -127,15 +185,27 @@ def sanitize_result_paths(result: dict, artifact: str, warnings: list[str]) -> N
                 kept.append(entry)
             else:
                 reject(path)
-        result[key] = kept
+        container[key] = kept
 
-    steps = result.get("steps")
-    if isinstance(steps, list):
-        for step in steps:
+    keep_safe_entries(result, "logs")
+    for session in result.get("sessions") or []:
+        if isinstance(session, dict):
+            keep_safe_entries(session, "logs")
+
+    for test in result.get("tests") or []:
+        if not isinstance(test, dict):
+            continue
+        keep_safe_entries(test, "screenshots")
+        for step in test.get("steps") or []:
             if isinstance(step, dict) and step.get("screenshot") is not None:
                 if not is_safe_relative_path(step["screenshot"]):
                     reject(step["screenshot"])
                     step["screenshot"] = None
+        log_ranges = test.get("logRanges")
+        if isinstance(log_ranges, dict):
+            for path in [p for p in log_ranges if not is_safe_relative_path(p)]:
+                reject(path)
+                del log_ranges[path]
 
 
 def load_result(artifact_dir: Path, name: str, warnings: list[str]) -> dict | None:
@@ -152,10 +222,12 @@ def load_result(artifact_dir: Path, name: str, warnings: list[str]) -> dict | No
     if not isinstance(data, dict):
         warnings.append(f"{name}: result.json is not a JSON object")
         return None
-    if data.get("schemaVersion") != 1:
-        # ビューアは未対応の版を "unsupported" として表示するので、埋め込みは続ける
-        warnings.append(f"{name}: unsupported result schemaVersion {data.get('schemaVersion')!r}")
     return data
+
+
+def is_supported(result: dict | None) -> bool:
+    """このサイト生成が読める result.json かどうか。"""
+    return isinstance(result, dict) and result.get("schemaVersion") == RESULT_SCHEMA_VERSION
 
 
 def run_id_for(result: dict | None, artifact: str, used: set[str], warnings: list[str]) -> str:
@@ -190,9 +262,9 @@ def copy_tree(source: Path, destination: Path) -> None:
 
 
 def copy_artifact_files(artifact_dir: Path, run_dir: Path, include_logs: bool) -> None:
-    """スクリーンショット（とログ類）を runs/<id>/ へコピーする。jar やワールドは契約上そもそも含まれない。"""
+    """テストごとのスクリーンショット（とログ類）を runs/<id>/ へコピーする。jar やワールドは契約上そもそも含まれない。"""
     run_dir.mkdir(parents=True, exist_ok=True)
-    copy_tree(artifact_dir / "screenshots", run_dir / "screenshots")
+    copy_tree(artifact_dir / "tests", run_dir / "tests")
     if include_logs:
         copy_tree(artifact_dir / "logs", run_dir / "logs")
         copy_tree(artifact_dir / "crash-reports", run_dir / "crash-reports")
@@ -200,9 +272,21 @@ def copy_artifact_files(artifact_dir: Path, run_dir: Path, include_logs: bool) -
 
 def warn_missing_screenshots(result: dict, run_dir: Path, artifact: str, warnings: list[str]) -> None:
     """result に載っているのにファイルが無いスクリーンショットを警告する（表示が壊れる原因になるため）。"""
-    for shot in result.get("screenshots") or []:
-        if isinstance(shot, dict) and not (run_dir / shot["path"]).is_file():
-            warnings.append(f"{artifact}: screenshot file missing: {shot['path']}")
+    for test in result.get("tests") or []:
+        for shot in test.get("screenshots") or []:
+            if isinstance(shot, dict) and not (run_dir / shot["path"]).is_file():
+                warnings.append(f"{artifact}: screenshot file missing: {shot['path']}")
+
+
+def fallback_logs(run_dir: Path) -> list[dict]:
+    """読める result が無い run のために、サイトへコピーできた harness.log を LogInfo の形で返す。
+
+    result が無いとログの一覧（result.logs / sessions[].logs）も無い。ビューアはこの一覧から生ファイルへリンクする。
+    harness.log はセットアップの最初から書かれるので、失敗の理由が残っている唯一のファイルであることが多い。
+    """
+    if (run_dir / HARNESS_LOG).is_file():
+        return [{"kind": "harness", "path": HARNESS_LOG, "player": None}]
+    return []
 
 
 def build_run(
@@ -220,21 +304,33 @@ def build_run(
     copy_artifact_files(artifact_dir, run_dir, include_logs)
 
     status = "error"
-    if result is not None:
+    if result is not None and not is_supported(result):
+        # ビューアは未対応の版を "unsupported" として表示するので、埋め込みは続ける。
+        # 形が分からないので集計（tests の格子）には入れず、run は error に数える
+        warnings.append(f"{artifact}: unsupported result schemaVersion {result.get('schemaVersion')!r}")
+    elif result is not None:
         status = result.get("status") if result.get("status") in RUN_STATUSES else "error"
         normalize_list_fields(result, artifact, warnings)
+        normalize_tests(result, artifact, warnings)
         sanitize_result_paths(result, artifact, warnings)
         warn_missing_screenshots(result, run_dir, artifact, warnings)
+    if result is not None:
         # 取り除いたパスを反映した result をサイト側にも置く
         (run_dir / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    return {
+    run = {
         "id": run_id,
         "artifact": artifact,
         "base": f"runs/{run_id}/",
         "status": status,
         "result": result,
     }
+    # 読める result が無い run（result.json が無い・未対応の版）では、コピーしたログを run 自身に載せる
+    if not is_supported(result):
+        logs = fallback_logs(run_dir)
+        if logs:
+            run["logs"] = logs
+    return run
 
 
 def build_run_safely(
@@ -252,6 +348,89 @@ def build_run_safely(
         warnings.append(f"{artifact}: could not process the artifact ({type(e).__name__}: {e})")
         run_id = run_id_for(None, artifact, used_ids, warnings)
         return {"id": run_id, "artifact": artifact, "base": f"runs/{run_id}/", "status": "error", "result": None}
+
+
+def run_tests(run: dict) -> list[dict]:
+    """run の tests[]（読める版の result だけ）を実行順に返す。"""
+    result = run["result"]
+    if not is_supported(result):
+        return []
+    tests = list(result.get("tests") or [])
+
+    def order_key(item: tuple[int, dict]) -> tuple:
+        position, test = item
+        order = test.get("order")
+        # order が数値でなければ配列の順を使う
+        return (order if isinstance(order, int) and not isinstance(order, bool) else position, position)
+
+    return [test for _, test in sorted(enumerate(tests), key=order_key)]
+
+
+def cell_status(test: dict) -> str:
+    """テストのステータス。契約外の値は error に数える。"""
+    status = test.get("status")
+    return status if status in TEST_STATUSES else "error"
+
+
+def append_unique(values: list[str], value: Any, exclude: set[str] = frozenset()) -> None:
+    """文字列を重複なく末尾に足す。"""
+    if isinstance(value, str) and value not in exclude and value not in values:
+        values.append(value)
+
+
+def build_test_matrix(runs: list[dict]) -> list[dict]:
+    """テスト × バージョンの格子を作る。
+
+    行は全 run の tests[] の和集合で、runs（古いバージョン順）の中で最初に現れた run の実行順に並べる。
+    cells に無い run は「not run」で、error には数えない。
+    """
+    matrix: dict[str, dict] = {}
+    for run in runs:
+        for test in run_tests(run):
+            entry = matrix.get(test["id"])
+            if entry is None:
+                name = test.get("name")
+                entry = matrix[test["id"]] = {
+                    "id": test["id"],
+                    "name": name if isinstance(name, str) and name else test["id"],
+                    "tags": [],
+                    "players": [],
+                    "shots": [],
+                    "status": "skipped",
+                    "cells": {},
+                }
+            for tag in test.get("tags") or []:
+                append_unique(entry["tags"], tag)
+            for player in test.get("players") or []:
+                append_unique(entry["players"], player.get("name") if isinstance(player, dict) else None)
+            for shot in test.get("screenshots") or []:
+                append_unique(entry["shots"], shot.get("name") if isinstance(shot, dict) else None, {FAILURE_SHOT})
+            entry["cells"][run["id"]] = cell_status(test)
+    for entry in matrix.values():
+        # error > failed > passed > skipped の順で最も強いものを行のステータスにする
+        entry["status"] = min(entry["cells"].values(), key=TEST_STATUS_PRIORITY.index)
+    return list(matrix.values())
+
+
+def summarize_tests(tests: list[dict]) -> dict:
+    """テスト × バージョンのセルのステータスごとの件数（not run は数えない）。"""
+    summary = {"total": 0, "passed": 0, "failed": 0, "error": 0, "skipped": 0}
+    for test in tests:
+        for status in test["cells"].values():
+            summary["total"] += 1
+            summary[status] += 1
+    return summary
+
+
+def failed_tests(manifest: dict) -> list[str]:
+    """failed / error のセルを "<test id>@<version>" で返す（テストの順、その中は古いバージョン順）。"""
+    versions = {run["id"]: run_version(run) or run["id"] for run in manifest["runs"]}
+    return [
+        f"{test['id']}@{versions[run_id]}"
+        for test in manifest["tests"]
+        for run_id in versions
+        if test["cells"].get(run_id) in ("failed", "error")
+    ]
 
 
 def is_single_artifact_layout(artifacts_dir: Path) -> bool:
@@ -314,14 +493,14 @@ def summarize(runs: list[dict]) -> dict:
     return summary
 
 
-def union_in_order(runs: list[dict], key: str, field: str, exclude: set[str] = frozenset()) -> list[str]:
-    """全 run の result[key][*][field] を、最初に現れた順で重複なく集める。"""
+def union_players(runs: list[dict]) -> list[str]:
+    """全 run の result.players の名前を、最初に現れた順で重複なく集める。"""
     seen: list[str] = []
     for run in runs:
-        for entry in (run["result"] or {}).get(key) or []:
-            value = entry.get(field) if isinstance(entry, dict) else None
-            if isinstance(value, str) and value not in exclude and value not in seen:
-                seen.append(value)
+        if not is_supported(run["result"]):
+            continue
+        for entry in run["result"].get("players") or []:
+            append_unique(seen, entry.get("name") if isinstance(entry, dict) else None)
     return seen
 
 
@@ -343,35 +522,68 @@ def ci_from_env(env: dict[str, str]) -> dict | None:
 
 
 def overall_status(summary: dict) -> str:
-    """action の status 出力。run が無ければ empty、1つでも失敗・エラーがあれば failed。"""
+    """action の status 出力（summary は run 単位の件数）。run が無ければ empty、1つでも失敗・エラーがあれば failed。"""
     if summary["total"] == 0:
         return "empty"
     return "passed" if summary["passed"] == summary["total"] else "failed"
 
 
+def failed_test_label(test: dict) -> str:
+    """ステップサマリーの Failure 列に出すテストの短い説明（例: stamp-sleeping-face (fixture)）。"""
+    failure = test.get("failure")
+    phase = failure.get("phase") if isinstance(failure, dict) else None
+    return f"{test['id']} ({phase})" if isinstance(phase, str) else test["id"]
+
+
+def escape_cell(text: str) -> str:
+    """Markdown の表が崩れないように改行とパイプを潰す。"""
+    return text.replace("|", "\\|").replace("\n", " ")[:200]
+
+
 def markdown_summary(manifest: dict) -> str:
-    """GITHUB_STEP_SUMMARY と標準出力に出す run 一覧の表。"""
-    s = manifest["summary"]
+    """GITHUB_STEP_SUMMARY と標準出力に出す、run 一覧とテスト × バージョンの表。"""
+    runs_summary = manifest["summary"]["runs"]
+    tests_summary = manifest["summary"]["tests"]
     lines = [
         f"### fukurou: {manifest['title']}",
         "",
-        f"{s['total']} runs: {s['passed']} passed, {s['failed']} failed, {s['error']} error",
+        f"{len(manifest['tests'])} tests × {runs_summary['total']} versions: "
+        f"{tests_summary['passed']} passed, {tests_summary['failed']} failed, "
+        f"{tests_summary['error']} error, {tests_summary['skipped']} skipped",
         "",
-        "| Run | Minecraft | Status | Steps | Screenshots | Failure |",
-        "| --- | --- | --- | --- | --- | --- |",
+        f"{runs_summary['total']} runs: {runs_summary['passed']} passed, "
+        f"{runs_summary['failed']} failed, {runs_summary['error']} error",
+        "",
+        "| Run | Minecraft | Status | Tests passed | Failure |",
+        "| --- | --- | --- | --- | --- |",
     ]
     for run in manifest["runs"]:
-        result = run["result"] or {}
-        steps = result.get("steps") or []
-        passed_steps = sum(1 for step in steps if isinstance(step, dict) and step.get("status") == "passed")
+        tests = run_tests(run)
+        passed = sum(1 for test in tests if cell_status(test) == "passed")
+        result = run["result"] if is_supported(run["result"]) else {}
         failure = result.get("failure") if isinstance(result.get("failure"), dict) else None
-        message = f"{failure.get('phase')}: {failure.get('message')}" if failure else ""
-        # 表が崩れないように改行とパイプを潰す
-        message = message.replace("|", "\\|").replace("\n", " ")[:200]
+        if run["result"] is not None and not is_supported(run["result"]):
+            message = "unsupported result.json"
+        elif failure:
+            # インフラの失敗（run.failure）があればそれを優先して出す
+            message = f"{failure.get('phase')}: {failure.get('message')}"
+        else:
+            # 無ければ失敗したテストを「id (phase)」で並べる
+            message = ", ".join(failed_test_label(test) for test in tests if cell_status(test) in ("failed", "error"))
         lines.append(
-            f"| {run['id']} | {run_version(run) or '?'} | {run['status']} | {passed_steps}/{len(steps)} "
-            f"| {len(result.get('screenshots') or [])} | {message} |"
+            f"| {run['id']} | {run_version(run) or '?'} | {run['status']} | {passed}/{len(tests)} "
+            f"| {escape_cell(message)} |"
         )
+    if manifest["tests"]:
+        # テスト × バージョンの格子。cells に無い run は not run
+        lines += [
+            "",
+            "| Test | " + " | ".join(run_version(run) or run["id"] for run in manifest["runs"]) + " |",
+            "| --- |" + " --- |" * len(manifest["runs"]),
+        ]
+        for test in manifest["tests"]:
+            cells = [test["cells"].get(run["id"], "not run") for run in manifest["runs"]]
+            lines.append(f"| {escape_cell(test['id'])} | " + " | ".join(cells) + " |")
     if manifest["warnings"]:
         lines += ["", "Warnings:", ""] + [f"- {w}" for w in manifest["warnings"]]
     return "\n".join(lines) + "\n"
@@ -414,7 +626,7 @@ def write_manifest(out: Path, manifest: dict) -> None:
 
 
 def write_github_files(manifest: dict, env: dict[str, str]) -> None:
-    """Actions 上なら、ステップサマリーと action の出力（status / summary）を書く。"""
+    """Actions 上なら、ステップサマリーと action の出力（status / summary / tests-summary / failed-tests）を書く。"""
     step_summary = env.get("GITHUB_STEP_SUMMARY")
     if step_summary:
         with open(step_summary, "a", encoding="utf-8") as f:
@@ -422,8 +634,12 @@ def write_github_files(manifest: dict, env: dict[str, str]) -> None:
     github_output = env.get("GITHUB_OUTPUT")
     if github_output:
         with open(github_output, "a", encoding="utf-8") as f:
-            f.write(f"status={overall_status(manifest['summary'])}\n")
-            f.write(f"summary={json.dumps(manifest['summary'], separators=(',', ':'))}\n")
+            f.write(f"status={overall_status(manifest['summary']['runs'])}\n")
+            f.write(f"summary={json.dumps(manifest['summary']['runs'], separators=(',', ':'))}\n")
+            f.write(f"tests-summary={json.dumps(manifest['summary']['tests'], separators=(',', ':'))}\n")
+            # テスト id は SAFE_TEST_ID、バージョンは result の値なので、改行を潰して出力の行を壊さない
+            failed = ",".join(failed_tests(manifest)).replace("\n", " ").replace("\r", " ")
+            f.write(f"failed-tests={failed}\n")
 
 
 def build_site(args: argparse.Namespace, env: dict[str, str]) -> dict:
@@ -451,15 +667,16 @@ def build_site(args: argparse.Namespace, env: dict[str, str]) -> dict:
 
     # 古いバージョンから順に並べる。同じバージョンは artifact 名で安定させる
     runs.sort(key=lambda run: (version_sort_key(run_version(run)), run["artifact"]))
+    tests = build_test_matrix(runs)
     manifest = {
         "schemaVersion": MANIFEST_SCHEMA_VERSION,
         "generator": {"name": GENERATOR_NAME, "version": generator_version()},
         "generatedAt": utc_now(),
         "title": args.title,
         "ci": ci_from_env(env),
-        "summary": summarize(runs),
-        "players": union_in_order(runs, "players", "name"),
-        "shots": union_in_order(runs, "screenshots", "name", exclude={FAILURE_SHOT}),
+        "summary": {"runs": summarize(runs), "tests": summarize_tests(tests)},
+        "players": union_players(runs),
+        "tests": tests,
         "runs": runs,
         "warnings": warnings,
     }

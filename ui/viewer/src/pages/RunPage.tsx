@@ -2,35 +2,43 @@ import { Link, useParams } from "@tanstack/react-router";
 import { css } from "styled-system/css";
 import { Button } from "../chlorophyll";
 import { Message } from "../components/Message";
+import { PageNav } from "../components/PageNav";
 import { Section } from "../components/Section";
 import { StatusBadge } from "../components/StatusBadge";
 import { UnsupportedRunCard } from "../components/UnsupportedRunCard";
 import { BuildInfo } from "../components/run/BuildInfo";
 import { FailureBox } from "../components/run/FailureBox";
-import { PlayerScreenshots } from "../components/run/PlayerScreenshots";
 import { PluginsTable } from "../components/run/PluginsTable";
 import { RunLogs } from "../components/run/RunLogs";
-import { RunNav } from "../components/run/RunNav";
-import { StepTimeline } from "../components/run/StepTimeline";
+import { runCrumb, runNeighbour } from "../components/run/runNav";
+import { SessionsList } from "../components/run/SessionsList";
+import { TestsTable } from "../components/run/TestsTable";
 import { formatDuration } from "../lib/format";
 import { findLogIndex } from "../lib/logs";
-import { supportedResult } from "../lib/runs";
+import { flatLogs, supportedResult } from "../lib/runs";
 import { useManifest } from "../manifest/useManifest";
 import { pageTitle } from "../styles";
 
 const header = css({ mt: "4", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "3" });
 
-/** #/runs/<id> : 1バージョン分の実行結果の詳細 */
+/** #/runs/<runId> : 1バージョン分の実行結果（セッション、テストの表、環境、プラグイン、ログ） */
 export function RunPage() {
-  const { id } = useParams({ from: "/runs/$id" });
+  const { runId } = useParams({ from: "/runs/$runId" });
   const manifest = useManifest();
-  const run = manifest.runs.find((candidate) => candidate.id === id);
+  const run = manifest.runs.find((candidate) => candidate.id === runId);
+  const nav = (
+    <PageNav
+      crumbs={[runCrumb(run, runId, false)]}
+      previous={runNeighbour(manifest.runs, runId, -1)}
+      next={runNeighbour(manifest.runs, runId, 1)}
+    />
+  );
 
   if (!run) {
     return (
       <>
-        <RunNav runs={manifest.runs} current={id} />
-        <Message title={`Run "${id}" is not in this report`} />
+        {nav}
+        <Message title={`Run "${runId}" is not in this report`} />
       </>
     );
   }
@@ -39,16 +47,18 @@ export function RunPage() {
   if (!result) {
     return (
       <div className={css({ display: "flex", flexDirection: "column", gap: "4" })}>
-        <RunNav runs={manifest.runs} current={id} />
+        {nav}
         <UnsupportedRunCard run={run} />
       </div>
     );
   }
 
-  const serverLog = findLogIndex(result.logs, "server");
+  const logs = flatLogs(result);
+  const serverLog = findLogIndex(logs, "server");
+  const summary = result.summary;
   return (
     <div>
-      <RunNav runs={manifest.runs} current={id} />
+      {nav}
       <header className={header}>
         <h1 className={pageTitle}>Minecraft {result.minecraft.version}</h1>
         <StatusBadge status={result.status} size="md" />
@@ -57,23 +67,30 @@ export function RunPage() {
         </span>
         {serverLog >= 0 && (
           <Button asChild size="sm" intent="secondary" className={css({ ml: { md: "auto" }, textDecoration: "none" })}>
-            <Link to="/runs/$id/logs/$logIndex" params={{ id: run.id, logIndex: String(serverLog) }}>
+            <Link to="/runs/$runId/logs/$logIndex" params={{ runId: run.id, logIndex: String(serverLog) }}>
               Server log
             </Link>
           </Button>
         )}
       </header>
-      {result.failure && <FailureBox failure={result.failure} />}
+      {result.failure && <FailureBox failure={result.failure} title="This version could not be tested:" />}
 
-      <Section title="Screenshots" aside={`${result.screenshots.length} total`}>
-        <PlayerScreenshots run={run} result={result} />
+      <Section
+        title="Tests"
+        aside={
+          summary
+            ? `${summary.passed} passed · ${summary.failed} failed · ${summary.error} error · ${summary.skipped} skipped of ${summary.total}`
+            : `${result.tests.length} tests`
+        }
+      >
+        <TestsTable run={run} tests={result.tests} />
       </Section>
-      <Section title="Steps" aside={`${result.steps.length} steps`}>
-        <StepTimeline run={run} steps={result.steps} />
+      <Section title="Sessions" aside={`${result.sessions.length} ${result.sessions.length === 1 ? "session" : "sessions"}`}>
+        <SessionsList run={run} result={result} />
       </Section>
-      <Section title="Logs" aside={`${result.logs.length} files`}>
+      <Section title="Logs" aside={`${logs.length} files`}>
         {/* 前後の run へ移ってもこのページは使い回されるので、run ごとに作り直して選択中のタブを持ち越さない */}
-        <RunLogs key={run.id} run={run} logs={result.logs} />
+        <RunLogs key={run.id} run={run} logs={logs} />
       </Section>
       <Section title="Environment">
         <BuildInfo result={result} />

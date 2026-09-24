@@ -1,0 +1,11 @@
+2026-09-24 03:00:00,000 INFO fukurou.cli: fukurou 2.0.0 run --minecraft-version 1.21.10 --suite game-test/fukurou.yml
+2026-09-24 03:00:00,120 INFO fukurou.scenario.discovery: discovered 4 tests
+2026-09-24 03:00:00,130 INFO fukurou.result.recorder: wrote result.json (all tests not run)
+2026-09-24 03:00:03,000 INFO fukurou.server.paper: resolved Paper 1.21.10 build 60
+2026-09-24 03:00:48,000 INFO fukurou.server.process: server is ready (RCON up)
+2026-09-24 03:01:00,000 INFO fukurou.run.session: session 0 (initial) started, joined Alice, Bob
+2026-09-24 03:01:15,000 INFO fukurou.run.suite_run: test stamp-thinking-face: reset done in 3.4s
+2026-09-24 03:01:17,000 INFO fukurou.run.suite_run: test stamp-thinking-face: passed
+2026-09-24 03:01:20,000 INFO fukurou.run.suite_run: test stamp-sleeping-face: reset done in 3.4s
+2026-09-24 03:01:22,000 ERROR fukurou.run.suite_run: test stamp-sleeping-face: error
+2026-09-24 03:01:30,000 ERROR fukurou.run.suite_run: server died during stamp-sleeping-face; skipping the remaining tests

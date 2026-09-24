@@ -1,4 +1,5 @@
-import type { LogInfo } from "../contract";
+import type { LogInfo, LogRange } from "../contract";
+import type { RunLog } from "./runs";
 
 /** 1行ごとの重要度。error / warn は強調し、chat（クライアントのチャット行）は控えめに色を付ける */
 export type LogLevel = "error" | "warn" | "chat" | "plain";
@@ -87,13 +88,17 @@ export interface LogFilter {
   errorsOnly: boolean;
   /** error に加えて warn も残す（errorsOnly のときだけ意味がある） */
   includeWarnings?: boolean;
+  /** この行番号の範囲（両端含む）だけにする。テストの logRanges から来る */
+  range?: LogRange | null;
 }
 
 /** 条件に合う行だけを返す。元の行番号は保つ */
 export function filterLines(lines: LogLine[], filter: LogFilter): LogLine[] {
   const needle = filter.query.trim().toLowerCase();
-  if (needle === "" && !filter.errorsOnly) return lines;
+  const range = filter.range ?? null;
+  if (needle === "" && !filter.errorsOnly && !range) return lines;
   return lines.filter((line) => {
+    if (range && (line.number < range.from || line.number > range.to)) return false;
     if (filter.errorsOnly && line.level !== "error" && !(filter.includeWarnings && line.level === "warn")) return false;
     return needle === "" || line.text.toLowerCase().includes(needle);
   });
@@ -104,6 +109,11 @@ export function filterLines(lines: LogLine[], filter: LogFilter): LogLine[] {
  * クラッシュレポートのファイル名は長くスマホ幅のタブに収まらないので、表示名には含めない（区別は logLabels で番号を振る）
  */
 export function logLabel(log: LogInfo): string {
+  return baseLabel(log);
+}
+
+/** 種類とプレイヤーだけの表示名 */
+function baseLabel(log: LogInfo): string {
   switch (log.kind) {
     case "server":
       return "Server";
@@ -120,27 +130,45 @@ export function logLabel(log: LogInfo): string {
 }
 
 /**
- * result.logs 全体の表示名。同じ表示名が複数ある（同じプレイヤーのクラッシュレポートが2つ以上など）ときは
+ * run の全ログ（flatLogs）の表示名。
+ * セッションが 2 つ以上ある run では、セッションのログに "· S1" のようにセッション番号を添えて区別する。
+ * それでも同じ表示名が複数ある（同じプレイヤーのクラッシュレポートが2つ以上、クライアントの再起動など）ときは
  * 2つ目以降に " #2" のような番号を付け、タブや見出しで区別できるようにする
  */
-export function logLabels(logs: LogInfo[]): string[] {
+export function logLabels(logs: RunLog[]): string[] {
+  const sessions = new Set(logs.map((log) => log.session).filter((session) => session !== null));
   const seen = new Map<string, number>();
   return logs.map((log) => {
-    const label = logLabel(log);
+    const label = sessions.size > 1 && log.session !== null ? `${baseLabel(log)} · S${log.session}` : baseLabel(log);
     const count = (seen.get(label) ?? 0) + 1;
     seen.set(label, count);
     return count === 1 ? label : `${label} #${count}`;
   });
 }
 
-/** 保存するときのファイル名。run id を前に付けて、複数の run のログを並べても区別できるようにする */
-export function logFileName(runId: string, log: LogInfo): string {
+/**
+ * 保存するときのファイル名。run id とセッション番号を前に付けて、複数の run・セッションのログを並べても区別できるようにする
+ * （セッションごとの server.log は同じファイル名なので、run id だけでは衝突する）
+ */
+export function logFileName(runId: string, log: RunLog): string {
   const file = log.path.split("/").pop() ?? "log.txt";
+  const session = log.session === null ? "" : `s${log.session}-`;
   const player = log.kind === "client" || log.kind === "crash" ? `${log.player ?? "unknown"}-` : "";
-  return `${runId}-${player}${file}`;
+  return `${runId}-${session}${player}${file}`;
 }
 
-/** 指定した種類（とプレイヤー）のログが result.logs の何番目かを返す。無ければ -1 */
-export function findLogIndex(logs: LogInfo[], kind: LogInfo["kind"], player?: string): number {
-  return logs.findIndex((log) => log.kind === kind && (player === undefined || log.player === player));
+/**
+ * 指定した種類（とプレイヤー、セッション）のログが flatLogs の何番目かを返す。無ければ -1。
+ * セッションを省略すると最初に見つかったもの（通常はセッション 0）
+ */
+export function findLogIndex(logs: RunLog[], kind: LogInfo["kind"], player?: string, session?: number | null): number {
+  return logs.findIndex(
+    (log) =>
+      log.kind === kind && (player === undefined || log.player === player) && (session === undefined || log.session === session),
+  );
+}
+
+/** artifact 内のパスでログを探す。logRanges のキーはこのパス */
+export function findLogIndexByPath(logs: LogInfo[], path: string): number {
+  return logs.findIndex((log) => log.path === path);
 }

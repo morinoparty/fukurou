@@ -1,0 +1,23 @@
+Starting minecraft server version 1.21.10
+Loading properties
+Default game type: SURVIVAL
+[ProtocolLib] Loading server plugin ProtocolLib v5.4.0
+[MineStamp] Loading server plugin MineStamp v1.4.0
+Preparing level "world"
+[ProtocolLib] Enabling ProtocolLib v5.4.0
+[MineStamp] Enabling MineStamp v1.4.0
+Done (3.2s)! For help, type "help"
+Starting remote control listener
+RCON running on 0.0.0.0:25575
+Alice joined the game
+Bob joined the game
+Rcon issued server command: /gamemode survival Alice
+Rcon issued server command: /tp Alice 0.5 -60 -8.5 0 0
+Rcon issued server command: /fill -16 -60 -16 15 -37 15 minecraft:air
+Rcon issued server command: /kill @e[type=!player]
+Rcon issued server command: /time set noon
+Rcon issued server command: /weather clear
+Rcon issued server command: /tp Bob 0.5 -60 200.5
+Alice issued server command: /st legacy:smile
+[MineStamp] Converted legacy stamp id legacy:smile to :smile:
+Stopping server

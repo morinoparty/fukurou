@@ -2,8 +2,8 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, type RefObject } from "react";
 import { css } from "styled-system/css";
 import { Button } from "../../chlorophyll";
-import type { LogInfo } from "../../contract";
 import { logLabels } from "../../lib/logs";
+import type { RunLog } from "../../lib/runs";
 import { buttonLink } from "../../styles";
 
 // Chlorophyll に Tabs が無いので、Button を横に並べてタブ代わりにする。
@@ -24,7 +24,8 @@ const list = css({
 });
 
 interface LogTabsProps {
-  logs: LogInfo[];
+  /** flatLogs(result) */
+  logs: RunLog[];
   /** 選択中のログの index */
   current: number;
   /** ログビューアのページではルーターのリンク、run のページではその場の切り替え */
@@ -33,7 +34,7 @@ interface LogTabsProps {
 }
 
 /**
- * result.logs のログを切り替えるタブ列。
+ * run の全ログ（flatLogs）を切り替えるタブ列。
  * ページを移るリンクのときは nav + aria-current、その場で切り替えるボタンのときは aria-pressed で選択中を伝える
  */
 export function LogTabs({ logs, current, mode, label }: LogTabsProps) {
@@ -63,10 +64,10 @@ export function LogTabs({ logs, current, mode, label }: LogTabsProps) {
         const intent = selected ? "primary" : "secondary";
         if (mode.kind === "link") {
           return (
-            <Button key={log.path} asChild size="sm" intent={intent} className={buttonLink}>
+            <Button key={`${log.session ?? "run"}:${log.path}`} asChild size="sm" intent={intent} className={buttonLink}>
               <Link
-                to="/runs/$id/logs/$logIndex"
-                params={{ id: mode.runId, logIndex: String(index) }}
+                to="/runs/$runId/logs/$logIndex"
+                params={{ runId: mode.runId, logIndex: String(index) }}
                 aria-current={selected ? "page" : undefined}
                 // 表示名はファイル名を省いているので、ホバーでパスを確かめられるようにする
                 title={log.path}
@@ -79,7 +80,7 @@ export function LogTabs({ logs, current, mode, label }: LogTabsProps) {
         }
         return (
           <Button
-            key={log.path}
+            key={`${log.session ?? "run"}:${log.path}`}
             type="button"
             size="sm"
             intent={intent}

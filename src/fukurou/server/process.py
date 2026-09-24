@@ -13,14 +13,24 @@ READY_MARKER = "Done ("
 HEAP = "-Xmx2G"
 
 
+class ServerUnavailableError(GameProcessError):
+    """RCON でコマンドを送れなかった（サーバーが死んだか応答しない）場合に送出する。
+
+    ステップの失敗（プラグインのバグ候補）と区別し、run 全体の失敗（phase server）として扱うための型。
+    """
+
+
 class ServerProcess:
-    """java -jar で直接起動する Paper サーバー。コマンドは RCON で送る。"""
+    """java -jar で直接起動する Paper サーバー。コマンドは RCON で送る。
+
+    セッションごとに新しく作る（ポート・RCON のパスワード・コンソールログの置き場が毎回変わる）。
+    """
 
     def __init__(self, java: Path, jar: Path, server_dir: Path, log_path: Path, bundler_dir: Path):
         self.java = java
         self.jar = jar
         self.server_dir = server_dir
-        # 標準出力（コンソール）の記録。起動直後の JVM のエラーも含むため、ログの照合はこちらで行う
+        # 標準出力（コンソール）の記録。起動直後の JVM のエラーも含むため、ログの照合と回収はこちらで行う
         self.log_path = log_path
         # Paperclip が展開するライブラリや Mojang の jar の置き場。実行ごとに作り直さないようキャッシュに置く
         self.bundler_dir = bundler_dir
@@ -43,7 +53,7 @@ class ServerProcess:
 
     @property
     def latest_log(self) -> Path:
-        """サーバー自身が書く logs/latest.log。成果物にはこちらを優先して含める。"""
+        """サーバー自身が書く logs/latest.log。行番号がコンソールの記録とずれるため、成果物には使わない。"""
         return self.server_dir / "logs" / "latest.log"
 
     def start(self, timeout: float) -> None:
@@ -67,15 +77,25 @@ class ServerProcess:
                 try:
                     self.command("list")
                     return
-                except (OSError, RconError):
+                except ServerUnavailableError:
+                    # 起動完了のログの直後は RCON がまだ待ち受けていないことがある
                     pass
             time.sleep(1.0)
         raise GameProcessError(f"server did not start within {timeout:.0f} seconds")
 
     def command(self, command: str) -> str:
-        """RCON でコンソールコマンドを実行し、応答を返す。"""
-        with RconClient("127.0.0.1", self.rcon_port, self.rcon_password) as rcon:
-            return rcon.command(command)
+        """RCON でコンソールコマンドを実行し、応答を返す。コマンド自体の失敗（応答文）は例外にしない。"""
+        try:
+            with RconClient("127.0.0.1", self.rcon_port, self.rcon_password) as rcon:
+                return rcon.command(command)
+        except (OSError, RconError) as error:
+            state = "is not running" if not self.is_running() else "did not answer"
+            raise ServerUnavailableError(f"server {state} ({type(error).__name__}: {error})") from error
+
+    def check_alive(self) -> None:
+        """サーバーのプロセスが終了していたら例外を送出する。"""
+        if self.process is not None and self.process.poll() is not None:
+            raise ServerUnavailableError(f"server exited with code {self.process.returncode}")
 
     def is_running(self) -> bool:
         return self.process is not None and self.process.poll() is None
@@ -87,6 +107,6 @@ class ServerProcess:
         try:
             self.command("stop")
             self.process.wait(timeout=60)
-        except (OSError, RconError, subprocess.TimeoutExpired):
+        except (ServerUnavailableError, subprocess.TimeoutExpired):
             pass
         stop_process(self.process, grace_seconds=20)

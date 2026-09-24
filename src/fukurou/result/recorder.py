@@ -1,31 +1,54 @@
-"""実行の進行に合わせて result.json の内容を組み立て、アトミックに書き出す。"""
+"""実行の進行に合わせて result.json（schemaVersion 2）の内容を組み立て、アトミックに書き出す。
+
+RunRecorder は run 全体（セッション・プレイヤー・run の失敗）、TestRecorder はテスト 1 件を記録する。
+どちらもプロセスには触れない受け身のデータで、SuiteRun が発見直後・各テストの後・後片付けの度に write() する。
+"""
 
 from datetime import UTC, datetime
 import os
 from pathlib import Path
 import time
+from typing import TYPE_CHECKING
 
 from fukurou import __version__
+from fukurou.result.ci import ci_from_env
 from fukurou.result.model import (
-    Failure,
-    FailurePhase,
+    STEP_FAILURE_PHASES,
     FukurouInfo,
     JavaInfo,
     LogInfo,
+    LogRange,
     MinecraftInfo,
     PlayerInfo,
     PluginInfo,
-    ResultV1,
+    ResetInfo,
+    ResultV2,
+    RunFailure,
+    RunFailurePhase,
     RunStatus,
-    ScenarioInfo,
     ScreenshotInfo,
+    SelectionInfo,
+    SessionInfo,
+    SessionKind,
     StepResult,
+    SuiteInfo,
+    TestFailure,
+    TestFailurePhase,
+    TestPlayer,
+    TestResult,
+    TestStatus,
+    derive_run_status,
+    summarize_tests,
 )
-from fukurou.result.ci import ci_from_env
 from fukurou.result.steps import step_label, step_target
 from fukurou.runner.portablemc import PORTABLEMC_VERSION
 
+if TYPE_CHECKING:
+    from fukurou.scenario import TestSpec
+
 SERVER_KIND = "paper"
+# 発見直後のスタブで全テストに付ける理由。ジョブが途中で消えても「走らなかった」と分かる
+NOT_RUN = "not run"
 
 
 def utc_timestamp(moment: datetime) -> str:
@@ -33,44 +56,184 @@ def utc_timestamp(moment: datetime) -> str:
     return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-class ResultRecorder:
-    """1回の実行の結果を記録する。途中で失敗しても、その時点までの内容で result.json を書ける。"""
+def now_timestamp() -> str:
+    return utc_timestamp(datetime.now(UTC))
+
+
+class TestRecorder:
+    """テスト 1 件の結果。start() までは skipped（NOT_RUN）で、実行した分だけ内容が埋まる。"""
+
+    # pytest がテストクラスとして収集しないようにする
+    __test__ = False
+
+    def __init__(self, spec: "TestSpec"):
+        self.spec = spec
+        self.skip_reason: str | None = NOT_RUN
+        self.session: int | None = None
+        self.reset: ResetInfo | None = None
+        self.failure: TestFailure | None = None
+        self.screenshots: list[ScreenshotInfo] = []
+        self.log_ranges: dict[str, LogRange] | None = None
+        self.started_at: str | None = None
+        self.duration_ms: int | None = None
+        self._started_monotonic: float | None = None
+        self._finished = False
+        # 全ステップを skipped として用意し、実行した分だけ置き換える（fixture 名は phase と対にする）
+        self.steps = [
+            StepResult(
+                index=index,
+                phase=planned.phase,
+                fixture=planned.fixture,
+                on=step_target(planned.step),
+                action=planned.step.action,
+                label=step_label(planned.step),
+                status="skipped",
+            )
+            for index, planned in enumerate(spec.steps)
+        ]
+
+    @property
+    def id(self) -> str:
+        return self.spec.id
+
+    @property
+    def status(self) -> TestStatus:
+        """skipped（理由あり）/ failed（ステップの失敗）/ error（ハーネス側の失敗）/ passed。"""
+        if self.skip_reason is not None:
+            return "skipped"
+        if self.failure is not None:
+            return "failed" if self.failure.phase in STEP_FAILURE_PHASES else "error"
+        # finish() 前に書き出されることは無いはずだが、もしあれば成功とは見なさない
+        return "passed" if self._finished else "error"
+
+    @property
+    def elapsed_seconds(self) -> float:
+        """start() からの経過秒数。ソフトなタイムアウトの判定に使う。"""
+        return 0.0 if self._started_monotonic is None else time.monotonic() - self._started_monotonic
+
+    def start(self, session: int) -> None:
+        """テストを開始する。以後は skipped ではなくなる。"""
+        self.skip_reason = None
+        self.session = session
+        self.started_at = now_timestamp()
+        self._started_monotonic = time.monotonic()
+
+    def set_reset(self, reset: ResetInfo) -> None:
+        self.reset = reset
+        if reset.error is not None:
+            self.fail("reset", reset.error)
+
+    def step_passed(self, index: int, duration_ms: int, screenshot: str | None = None) -> None:
+        self._update_step(index, status="passed", duration_ms=duration_ms, screenshot=screenshot)
+
+    def step_failed(self, index: int, duration_ms: int, error: str, phase: TestFailurePhase | None = None) -> None:
+        """ステップの失敗。失敗の段階は既定ではそのステップの層（beforeEach / fixture / test → scenario）。
+
+        クライアントの死亡のようにハーネス側の原因なら phase を指定し、テストを error にする。
+        """
+        self._update_step(index, status="failed", duration_ms=duration_ms, error=error)
+        if phase is None:
+            step_phase = self.steps[index].phase
+            phase = "scenario" if step_phase == "test" else step_phase
+        self.fail(phase, error, step_index=index)
+
+    def step_skipped(self, index: int, reason: str | None = None) -> None:
+        self._update_step(index, status="skipped", error=reason)
+
+    def add_screenshot(self, info: ScreenshotInfo) -> None:
+        self.screenshots.append(info)
+
+    def set_log_ranges(self, ranges: dict[str, LogRange]) -> None:
+        self.log_ranges = dict(ranges)
+
+    def skip(self, reason: str) -> None:
+        """走らなかった（または走り切れなかった）テストにする。契約どおり実行の痕跡は残さない。"""
+        self.skip_reason = reason
+        self.session = None
+        self.reset = None
+        self.failure = None
+        self.screenshots = []
+        self.log_ranges = None
+        self.started_at = None
+        self.duration_ms = None
+        self.steps = [
+            step.model_copy(update={"status": "skipped", "duration_ms": None, "error": None, "screenshot": None})
+            for step in self.steps
+        ]
+
+    def fail(self, phase: TestFailurePhase, message: str, step_index: int | None = None) -> None:
+        """最初の失敗だけを記録する。後続の失敗は最初の失敗の結果であることが多いため。"""
+        if self.failure is None:
+            self.failure = TestFailure(phase=phase, message=message, step_index=step_index)
+
+    def finish(self) -> None:
+        """実行を終える。失敗が無ければ passed になる。"""
+        self._finished = True
+        if self._started_monotonic is not None:
+            self.duration_ms = int((time.monotonic() - self._started_monotonic) * 1000)
+
+    def build(self) -> TestResult:
+        spec = self.spec
+        return TestResult(
+            id=spec.id,
+            name=spec.name,
+            order=spec.order,
+            source=spec.source,
+            sha256=spec.sha256,
+            tags=list(spec.tags),
+            isolation=spec.isolation,
+            timeout=spec.timeout,
+            versions=spec.versions,
+            session=self.session,
+            status=self.status,
+            skip_reason=self.skip_reason,
+            players=[TestPlayer(name=player.name, op=player.op) for player in spec.players],
+            reset=self.reset,
+            # 走らなかったテストは契約どおり steps を空にする（展開済みのステップは start() 後に使う）
+            steps=[] if self.skip_reason is not None else list(self.steps),
+            failure=self.failure,
+            screenshots=list(self.screenshots),
+            log_ranges=self.log_ranges,
+            started_at=self.started_at,
+            duration_ms=self.duration_ms,
+        )
+
+    def _update_step(self, index: int, **changes) -> None:
+        self.steps[index] = self.steps[index].model_copy(update=changes)
+
+
+class RunRecorder:
+    """1 バージョン分の実行の結果。途中で失敗しても、その時点までの内容で result.json を書ける。"""
 
     def __init__(self, minecraft_version: str, env: dict[str, str] | None = None):
         self.started_at = datetime.now(UTC)
         self._started_monotonic = time.monotonic()
         self.minecraft = MinecraftInfo(version=minecraft_version, server=SERVER_KIND)
         self.java = JavaInfo()
-        self.scenario: ScenarioInfo | None = None
         self.plugins: list[PluginInfo] = []
+        self.suite: SuiteInfo | None = None
+        self.selection = SelectionInfo()
         self.players: list[PlayerInfo] = []
-        self.steps: list[StepResult] = []
-        self.failure: Failure | None = None
-        self.screenshots: list[ScreenshotInfo] = []
+        self.sessions: list[SessionInfo] = []
+        self.tests: dict[str, TestRecorder] = {}
+        self.failure: RunFailure | None = None
         self.logs: list[LogInfo] = []
         self.ci = ci_from_env(os.environ if env is None else env)
 
     @property
     def status(self) -> RunStatus:
-        """失敗が無ければ passed、シナリオのステップが失敗したら failed、それ以外なら error。
+        return derive_run_status(self.failure, [test.build() for test in self.tests.values()])
 
-        シナリオ中でもステップに結び付かない失敗（ジョブのキャンセルやタイムアウトによる中断）は、
-        プラグインの失敗と区別するため error とする。
-        """
-        if self.failure is None:
-            return "passed"
-        step_failed = self.failure.phase == "scenario" and self.failure.step_index is not None
-        return "failed" if step_failed else "error"
+    def register_tests(self, specs: list["TestSpec"]) -> None:
+        """発見したテストを実行順に登録する。全テストが skipped（not run）のスタブになる。"""
+        self.tests = {spec.id: TestRecorder(spec) for spec in specs}
 
-    def set_steps(self, steps: list) -> None:
-        """全ステップを skipped として登録しておき、実行した分だけ結果で置き換える。"""
-        self.steps = [
-            StepResult(index=index, on=step_target(step), action=step.action, label=step_label(step), status="skipped")
-            for index, step in enumerate(steps)
-        ]
+    def test(self, test_id: str) -> TestRecorder:
+        return self.tests[test_id]
 
-    def set_players(self, players: list) -> None:
-        self.players = [PlayerInfo(name=player.name, op=player.op) for player in players]
+    def set_players(self, names: list[str]) -> None:
+        """セッションに参加させるプレイヤー（全テストの和集合、参加順）。"""
+        self.players = [PlayerInfo(name=name) for name in names]
 
     def mark_joined(self, name: str) -> None:
         for player in self.players:
@@ -83,55 +246,72 @@ class ResultRecorder:
             if plugin.name in enabled:
                 plugin.enabled = enabled[plugin.name]
 
-    def step_passed(self, index: int, duration_ms: int, screenshot: str | None = None) -> None:
-        self._update_step(index, status="passed", duration_ms=duration_ms, screenshot=screenshot)
+    def add_session(self, kind: SessionKind) -> SessionInfo:
+        """サーバーを起動したセッションを追加し、その情報を返す（index は追加順）。"""
+        session = SessionInfo(index=len(self.sessions), kind=kind, started_at=now_timestamp())
+        self.sessions.append(session)
+        return session
 
-    def step_failed(self, index: int, duration_ms: int, error: str) -> None:
-        self._update_step(index, status="failed", duration_ms=duration_ms, error=error)
-        self.fail("scenario", error, step_index=index)
+    def add_session_log(self, index: int, info: LogInfo) -> None:
+        """セッションで回収したログを 1 つ足す（同じパスは 1 回だけ）。"""
+        session = self.sessions[index]
+        if all(existing.path != info.path for existing in session.logs):
+            session.logs.append(info)
 
-    def add_screenshot(self, info: ScreenshotInfo) -> None:
-        self.screenshots.append(info)
+    def finish_session(self, index: int, logs: list[LogInfo], failure: str | None = None) -> None:
+        """セッションを閉じる。回収したログは、再起動時に回収済みのものへ足す。"""
+        session = self.sessions[index]
+        session.finished_at = now_timestamp()
+        for info in logs:
+            self.add_session_log(index, info)
+        if failure is not None and session.failure is None:
+            session.failure = failure
 
-    def fail(self, phase: FailurePhase, message: str, step_index: int | None = None) -> None:
+    def fail(self, phase: RunFailurePhase, message: str) -> None:
         """最初の失敗だけを記録する。後続の失敗は最初の失敗の結果であることが多いため。"""
         if self.failure is None:
-            self.failure = Failure(phase=phase, message=message, step_index=step_index)
+            self.failure = RunFailure(phase=phase, message=message)
 
-    def build(self) -> ResultV1:
-        """現時点の内容から ResultV1 を作る。"""
-        finished_at = datetime.now(UTC)
-        return ResultV1(
+    def skip_pending(self, reason: str) -> list[str]:
+        """まだ走っていない（not run の）テストを理由付きの skipped にし、その id を返す。"""
+        pending = [test for test in self.tests.values() if test.skip_reason == NOT_RUN]
+        for test in pending:
+            test.skip(reason)
+        return [test.id for test in pending]
+
+    def build(self) -> ResultV2:
+        """現時点の内容から ResultV2 を作る。summary と status は tests から導出する。"""
+        tests = [test.build() for test in self.tests.values()]
+        return ResultV2(
             id=f"{SERVER_KIND}-{self.minecraft.version}",
-            status=self.status,
+            status=derive_run_status(self.failure, tests),
             fukurou=FukurouInfo(version=__version__, portablemc=PORTABLEMC_VERSION),
             minecraft=self.minecraft,
             java=self.java,
-            scenario=self.scenario,
             plugins=self.plugins,
+            suite=self.suite,
+            selection=self.selection,
             players=self.players,
-            steps=self.steps,
+            summary=summarize_tests(tests),
+            sessions=self.sessions,
+            tests=tests,
             failure=self.failure,
-            screenshots=self.screenshots,
             logs=self.logs,
             started_at=utc_timestamp(self.started_at),
-            finished_at=utc_timestamp(finished_at),
+            finished_at=now_timestamp(),
             duration_ms=int((time.monotonic() - self._started_monotonic) * 1000),
             ci=self.ci,
         )
 
-    def write(self, path: Path) -> ResultV1:
+    def write(self, path: Path) -> ResultV2:
         """result.json を書く。途中で中断されても壊れたファイルが残らないよう、一時ファイルから置き換える。"""
         result = self.build()
         write_result(result, path)
         return result
 
-    def _update_step(self, index: int, **changes) -> None:
-        self.steps[index] = self.steps[index].model_copy(update=changes)
 
-
-def write_result(result: ResultV1, path: Path) -> None:
-    """ResultV1 を camelCase の JSON としてアトミックに書き出す。"""
+def write_result(result: ResultV2, path: Path) -> None:
+    """ResultV2 を camelCase の JSON としてアトミックに書き出す。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_text(result.model_dump_json(by_alias=True, indent=2) + "\n", encoding="utf-8")

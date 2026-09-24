@@ -1,4 +1,4 @@
-import type { ManifestV1 } from "../contract";
+import type { ManifestV2 } from "../contract";
 
 declare global {
   interface Window {
@@ -8,10 +8,10 @@ declare global {
 }
 
 /** manifest の読み込み結果。画面側はこの3通りだけを考えればよい */
-export type ManifestState = { kind: "loaded"; manifest: ManifestV1 } | { kind: "missing" } | { kind: "invalid"; reason: string };
+export type ManifestState = { kind: "loaded"; manifest: ManifestV2 } | { kind: "missing" } | { kind: "invalid"; reason: string };
 
 /** ビューアが理解できる manifest の schemaVersion */
-const SUPPORTED_MANIFEST_VERSION = 1;
+const SUPPORTED_MANIFEST_VERSION = 2;
 
 /**
  * manifest を読み込む。
@@ -44,26 +44,37 @@ function validateManifest(value: unknown): ManifestState {
   if (typeof value !== "object" || value === null) {
     return { kind: "invalid", reason: "The manifest is not a JSON object." };
   }
-  const candidate = value as Partial<ManifestV1> & { schemaVersion?: unknown };
+  const candidate = value as Partial<ManifestV2> & { schemaVersion?: unknown };
   if (candidate.schemaVersion !== SUPPORTED_MANIFEST_VERSION) {
+    // v1 のサイトはこのビューアでは読まない（設計 §8: v1 の読み取りアダプタは載せない）
+    const hint =
+      typeof candidate.schemaVersion === "number" && candidate.schemaVersion < SUPPORTED_MANIFEST_VERSION
+        ? "It was built by fukurou/ui v1; rebuild the site with fukurou/ui v2 from v2 artifacts."
+        : "Use a newer fukurou/ui.";
     return {
       kind: "invalid",
-      reason: `Unsupported manifest schemaVersion ${String(candidate.schemaVersion)}. This viewer understands version ${SUPPORTED_MANIFEST_VERSION}.`,
+      reason: `Unsupported manifest schemaVersion ${String(candidate.schemaVersion)}. This viewer understands version ${SUPPORTED_MANIFEST_VERSION}. ${hint}`,
     };
   }
   if (!Array.isArray(candidate.runs)) {
     return { kind: "invalid", reason: "The manifest has no runs array." };
   }
-  return { kind: "loaded", manifest: withDefaults(candidate as ManifestV1) };
+  return { kind: "loaded", manifest: withDefaults(candidate as ManifestV2) };
 }
 
-/** 欠けていても表示できる配列フィールドを空配列で補う */
-function withDefaults(manifest: ManifestV1): ManifestV1 {
+/** 欠けていても表示できるフィールドを補う */
+function withDefaults(manifest: ManifestV2): ManifestV2 {
   return {
     ...manifest,
     title: manifest.title ?? "fukurou",
     players: manifest.players ?? [],
-    shots: manifest.shots ?? [],
+    tests: (manifest.tests ?? []).map((test) => ({
+      ...test,
+      tags: test.tags ?? [],
+      players: test.players ?? [],
+      shots: test.shots ?? [],
+      cells: test.cells ?? {},
+    })),
     warnings: manifest.warnings ?? [],
   };
 }

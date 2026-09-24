@@ -1,0 +1,648 @@
+{
+  "schemaVersion": 2,
+  "id": "paper-1.21.10",
+  "status": "error",
+  "fukurou": {
+    "version": "2.0.0",
+    "portablemc": "5.0.4"
+  },
+  "minecraft": {
+    "version": "1.21.10",
+    "server": "paper",
+    "build": 60,
+    "channel": "STABLE"
+  },
+  "java": {
+    "server": 25
+  },
+  "plugins": [
+    {
+      "file": "MineStamp-abc1234-all.jar",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "name": "MineStamp",
+      "version": "1.4.0",
+      "role": "under-test",
+      "source": null,
+      "classFileMajor": 69,
+      "enabled": true
+    },
+    {
+      "file": "ProtocolLib.jar",
+      "sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+      "name": "ProtocolLib",
+      "version": "5.4.0",
+      "role": "dependency",
+      "source": "github:dmulloy2/ProtocolLib@dev-build/ProtocolLib.jar",
+      "classFileMajor": 61,
+      "enabled": true
+    }
+  ],
+  "suite": {
+    "source": "file:game-test/fukurou.yml",
+    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "isolation": "reset",
+    "settle": 3,
+    "gamemode": "survival",
+    "arena": {
+      "size": 32,
+      "height": 24
+    }
+  },
+  "selection": {
+    "tests": [],
+    "tags": [
+      "stamps",
+      "slow"
+    ],
+    "isolation": null,
+    "failFast": false
+  },
+  "players": [
+    {
+      "name": "Alice",
+      "joined": true
+    },
+    {
+      "name": "Bob",
+      "joined": true
+    }
+  ],
+  "summary": {
+    "total": 4,
+    "passed": 1,
+    "failed": 0,
+    "error": 1,
+    "skipped": 2
+  },
+  "sessions": [
+    {
+      "index": 0,
+      "kind": "initial",
+      "startedAt": "2026-09-24T03:01:00Z",
+      "finishedAt": "2026-09-24T03:01:59Z",
+      "players": [
+        "Alice",
+        "Bob"
+      ],
+      "tests": [
+        "stamp-thinking-face",
+        "stamp-sleeping-face"
+      ],
+      "logs": [
+        {
+          "kind": "server",
+          "path": "logs/sessions/0/server.log",
+          "player": null
+        },
+        {
+          "kind": "client",
+          "path": "logs/sessions/0/clients/Alice.log",
+          "player": "Alice"
+        },
+        {
+          "kind": "client",
+          "path": "logs/sessions/0/clients/Bob.log",
+          "player": "Bob"
+        }
+      ],
+      "failure": "the server stopped responding to RCON during stamp-sleeping-face (exit code 137)"
+    }
+  ],
+  "tests": [
+    {
+      "id": "stamp-thinking-face",
+      "name": "stamp-thinking-face",
+      "order": 0,
+      "source": "file:game-test/scenarios/stamp-thinking-face.json",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "tags": [
+        "stamps"
+      ],
+      "isolation": "reset",
+      "timeout": 600,
+      "versions": null,
+      "session": 0,
+      "status": "passed",
+      "skipReason": null,
+      "players": [
+        {
+          "name": "Alice",
+          "op": true
+        },
+        {
+          "name": "Bob",
+          "op": false
+        }
+      ],
+      "reset": {
+        "durationMs": 3400,
+        "error": null
+      },
+      "steps": [
+        {
+          "index": 0,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "command",
+          "label": "fill 0 -60 0 0 -50 0 minecraft:stone",
+          "status": "passed",
+          "durationMs": 20,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 1,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "command",
+          "label": "fill 0 -60 8 0 -50 8 minecraft:stone",
+          "status": "passed",
+          "durationMs": 20,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 2,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "command",
+          "label": "tp Alice 0.5 -49 0.5 0 30",
+          "status": "passed",
+          "durationMs": 20,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 3,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "command",
+          "label": "tp Bob 0.5 -49 8.5 180 -15",
+          "status": "passed",
+          "durationMs": 20,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 4,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": null,
+          "action": "wait",
+          "label": "2s",
+          "status": "passed",
+          "durationMs": 2000,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 5,
+          "phase": "fixture",
+          "fixture": "front-view",
+          "on": "Alice",
+          "action": "press_key",
+          "label": "F5",
+          "status": "passed",
+          "durationMs": 20,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 6,
+          "phase": "fixture",
+          "fixture": "front-view",
+          "on": "Alice",
+          "action": "press_key",
+          "label": "F5",
+          "status": "passed",
+          "durationMs": 20,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 7,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "chat",
+          "label": "/st :thinking-face:",
+          "status": "passed",
+          "durationMs": 20,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 8,
+          "phase": "test",
+          "fixture": null,
+          "on": "server",
+          "action": "wait_for_log",
+          "label": "Alice issued server command: /st :thinking-face:",
+          "status": "passed",
+          "durationMs": 350,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 9,
+          "phase": "test",
+          "fixture": null,
+          "on": null,
+          "action": "wait",
+          "label": "1s",
+          "status": "passed",
+          "durationMs": 1000,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 10,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "screenshot",
+          "label": "after-stamp",
+          "status": "passed",
+          "durationMs": 1900,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 11,
+          "phase": "test",
+          "fixture": null,
+          "on": "Bob",
+          "action": "screenshot",
+          "label": "after-stamp",
+          "status": "passed",
+          "durationMs": 1900,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 12,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "assert_no_log",
+          "label": "[CHAT].*(Unknown command|Stamp not found)",
+          "status": "passed",
+          "durationMs": 20,
+          "error": null,
+          "screenshot": null
+        }
+      ],
+      "failure": null,
+      "screenshots": [
+        {
+          "player": "Alice",
+          "name": "after-stamp",
+          "path": "tests/stamp-thinking-face/screenshots/Alice/after-stamp.png",
+          "width": 96,
+          "height": 54,
+          "stepIndex": 10
+        },
+        {
+          "player": "Bob",
+          "name": "after-stamp",
+          "path": "tests/stamp-thinking-face/screenshots/Bob/after-stamp.png",
+          "width": 96,
+          "height": 54,
+          "stepIndex": 11
+        }
+      ],
+      "logRanges": {
+        "logs/sessions/0/server.log": {
+          "from": 34,
+          "to": 52
+        },
+        "logs/sessions/0/clients/Alice.log": {
+          "from": 12,
+          "to": 15
+        },
+        "logs/sessions/0/clients/Bob.log": {
+          "from": 12,
+          "to": 13
+        }
+      },
+      "startedAt": "2026-09-24T03:01:15Z",
+      "durationMs": 10710
+    },
+    {
+      "id": "stamp-sleeping-face",
+      "name": "stamp-sleeping-face",
+      "order": 1,
+      "source": "file:game-test/scenarios/stamp-sleeping-face.json",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "tags": [
+        "stamps"
+      ],
+      "isolation": "reset",
+      "timeout": 600,
+      "versions": null,
+      "session": 0,
+      "status": "error",
+      "skipReason": null,
+      "players": [
+        {
+          "name": "Alice",
+          "op": true
+        },
+        {
+          "name": "Bob",
+          "op": false
+        }
+      ],
+      "reset": {
+        "durationMs": 3400,
+        "error": null
+      },
+      "steps": [
+        {
+          "index": 0,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "command",
+          "label": "fill 0 -60 0 0 -50 0 minecraft:stone",
+          "status": "passed",
+          "durationMs": 20,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 1,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "command",
+          "label": "fill 0 -60 8 0 -50 8 minecraft:stone",
+          "status": "passed",
+          "durationMs": 20,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 2,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "command",
+          "label": "tp Alice 0.5 -49 0.5 0 30",
+          "status": "passed",
+          "durationMs": 20,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 3,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "command",
+          "label": "tp Bob 0.5 -49 8.5 180 -15",
+          "status": "passed",
+          "durationMs": 20,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 4,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": null,
+          "action": "wait",
+          "label": "2s",
+          "status": "passed",
+          "durationMs": 2000,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 5,
+          "phase": "fixture",
+          "fixture": "front-view",
+          "on": "Alice",
+          "action": "press_key",
+          "label": "F5",
+          "status": "passed",
+          "durationMs": 20,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 6,
+          "phase": "fixture",
+          "fixture": "front-view",
+          "on": "Alice",
+          "action": "press_key",
+          "label": "F5",
+          "status": "passed",
+          "durationMs": 20,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 7,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "chat",
+          "label": "/st :sleeping-face:",
+          "status": "passed",
+          "durationMs": 20,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 8,
+          "phase": "test",
+          "fixture": null,
+          "on": "server",
+          "action": "wait_for_log",
+          "label": "Alice issued server command: /st :sleeping-face:",
+          "status": "failed",
+          "durationMs": 10004,
+          "error": "the server stopped responding: RCON connection reset by peer",
+          "screenshot": null
+        },
+        {
+          "index": 9,
+          "phase": "test",
+          "fixture": null,
+          "on": null,
+          "action": "wait",
+          "label": "1s",
+          "status": "skipped",
+          "durationMs": null,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 10,
+          "phase": "test",
+          "fixture": null,
+          "on": "Bob",
+          "action": "screenshot",
+          "label": "after-stamp",
+          "status": "skipped",
+          "durationMs": null,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 11,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "screenshot",
+          "label": "after-stamp",
+          "status": "skipped",
+          "durationMs": null,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 12,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "assert_no_log",
+          "label": "[CHAT].*(Unknown command|Stamp not found)",
+          "status": "skipped",
+          "durationMs": null,
+          "error": null,
+          "screenshot": null
+        }
+      ],
+      "failure": {
+        "phase": "timeout",
+        "message": "the server stopped responding: RCON connection reset by peer",
+        "stepIndex": 8
+      },
+      "screenshots": [
+        {
+          "player": "Alice",
+          "name": "failure",
+          "path": "tests/stamp-sleeping-face/screenshots/Alice/failure.png",
+          "width": 96,
+          "height": 54,
+          "stepIndex": 8
+        },
+        {
+          "player": "Bob",
+          "name": "failure",
+          "path": "tests/stamp-sleeping-face/screenshots/Bob/failure.png",
+          "width": 96,
+          "height": 54,
+          "stepIndex": 8
+        }
+      ],
+      "logRanges": {
+        "logs/sessions/0/server.log": {
+          "from": 53,
+          "to": 74
+        },
+        "logs/sessions/0/clients/Alice.log": {
+          "from": 16,
+          "to": 19
+        },
+        "logs/sessions/0/clients/Bob.log": {
+          "from": 14,
+          "to": 15
+        }
+      },
+      "startedAt": "2026-09-24T03:01:20Z",
+      "durationMs": 15544
+    },
+    {
+      "id": "stamp-legacy-format",
+      "name": "stamp-legacy-format",
+      "order": 2,
+      "source": "file:game-test/scenarios/stamp-legacy-format.json",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "tags": [
+        "stamps",
+        "legacy"
+      ],
+      "isolation": "reset",
+      "timeout": 600,
+      "versions": "1.21.6-1.21.9",
+      "session": null,
+      "status": "skipped",
+      "skipReason": "versions: 1.21.6-1.21.9 does not include 1.21.10",
+      "players": [
+        {
+          "name": "Alice",
+          "op": true
+        }
+      ],
+      "reset": null,
+      "steps": [],
+      "failure": null,
+      "screenshots": [],
+      "logRanges": null,
+      "startedAt": null,
+      "durationMs": null
+    },
+    {
+      "id": "fresh-world-join",
+      "name": "fresh-world-join",
+      "order": 3,
+      "source": "file:game-test/scenarios/fresh-world-join.json",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "tags": [
+        "slow"
+      ],
+      "isolation": "fresh-server",
+      "timeout": 600,
+      "versions": null,
+      "session": null,
+      "status": "skipped",
+      "skipReason": "server died during stamp-sleeping-face",
+      "players": [
+        {
+          "name": "Alice",
+          "op": true
+        },
+        {
+          "name": "Bob",
+          "op": false
+        }
+      ],
+      "reset": null,
+      "steps": [],
+      "failure": null,
+      "screenshots": [],
+      "logRanges": null,
+      "startedAt": null,
+      "durationMs": null
+    }
+  ],
+  "failure": {
+    "phase": "server",
+    "message": "the server stopped responding to RCON during stamp-sleeping-face (exit code 137)"
+  },
+  "logs": [
+    {
+      "kind": "harness",
+      "path": "logs/harness.log",
+      "player": null
+    }
+  ],
+  "startedAt": "2026-09-24T03:00:00Z",
+  "finishedAt": "2026-09-24T03:05:30Z",
+  "durationMs": 330000,
+  "ci": {
+    "repository": "morinoparty/MineStamp",
+    "sha": "0123456789abcdef0123456789abcdef01234567",
+    "ref": "refs/pull/1/merge",
+    "runId": "123",
+    "runAttempt": "1",
+    "serverUrl": "https://github.com"
+  }
+}

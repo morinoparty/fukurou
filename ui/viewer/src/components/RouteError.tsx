@@ -9,7 +9,7 @@ export function RouteError({ error }: ErrorComponentProps) {
         <code>{error instanceof Error ? error.message : String(error)}</code>
       </p>
       <p>
-        <Link to="/">Back to all runs</Link>
+        <Link to="/">Back to the overview</Link>
       </p>
     </Message>
   );

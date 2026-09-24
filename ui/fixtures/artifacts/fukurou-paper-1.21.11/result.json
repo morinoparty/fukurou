@@ -1,48 +1,730 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "paper-1.21.11",
   "status": "failed",
   "fukurou": {
-    "version": "0.1.0",
+    "version": "2.0.0",
     "portablemc": "5.0.4"
   },
   "minecraft": {
     "version": "1.21.11",
     "server": "paper",
-    "build": 128,
+    "build": 130,
     "channel": "STABLE"
   },
   "java": {
     "server": 21
   },
-  "scenario": {
-    "name": "stamp-thinking-face",
-    "source": "file:game-test/scenarios/stamp-thinking-face.json",
-    "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
-  },
   "plugins": [
     {
-      "file": "MineStamp-all.jar",
+      "file": "MineStamp-abc1234-all.jar",
       "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
       "name": "MineStamp",
-      "version": "1.0",
+      "version": "1.4.0",
       "role": "under-test",
+      "source": null,
+      "classFileMajor": 65,
+      "enabled": true
+    },
+    {
+      "file": "ProtocolLib.jar",
+      "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "name": "ProtocolLib",
+      "version": "5.4.0",
+      "role": "dependency",
+      "source": "github:dmulloy2/ProtocolLib@dev-build/ProtocolLib.jar",
       "classFileMajor": 65,
       "enabled": true
     }
   ],
+  "suite": {
+    "source": "file:game-test/fukurou.yml",
+    "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "isolation": "reset",
+    "settle": 3,
+    "gamemode": "survival",
+    "arena": {
+      "size": 32,
+      "height": 24
+    }
+  },
+  "selection": {
+    "tests": [],
+    "tags": [],
+    "isolation": null,
+    "failFast": false
+  },
   "players": [
     {
       "name": "Alice",
-      "op": true,
       "joined": true
     },
     {
       "name": "Bob",
-      "op": false,
       "joined": true
     }
   ],
+  "summary": {
+    "total": 4,
+    "passed": 1,
+    "failed": 1,
+    "error": 1,
+    "skipped": 1
+  },
+  "sessions": [
+    {
+      "index": 0,
+      "kind": "initial",
+      "startedAt": "2026-09-24T03:01:00Z",
+      "finishedAt": "2026-09-24T03:03:30Z",
+      "players": [
+        "Alice",
+        "Bob"
+      ],
+      "tests": [
+        "stamp-thinking-face",
+        "stamp-sleeping-face",
+        "stamp-reload"
+      ],
+      "logs": [
+        {
+          "kind": "server",
+          "path": "logs/sessions/0/server.log",
+          "player": null
+        },
+        {
+          "kind": "client",
+          "path": "logs/sessions/0/clients/Alice.log",
+          "player": "Alice"
+        },
+        {
+          "kind": "client",
+          "path": "logs/sessions/0/clients/Bob.log",
+          "player": "Bob"
+        }
+      ],
+      "failure": null
+    }
+  ],
+  "tests": [
+    {
+      "id": "stamp-thinking-face",
+      "name": "stamp-thinking-face",
+      "order": 0,
+      "source": "file:game-test/scenarios/stamp-thinking-face.json",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "tags": [
+        "stamps"
+      ],
+      "isolation": "reset",
+      "timeout": 600,
+      "versions": null,
+      "players": [
+        {
+          "name": "Alice",
+          "op": true
+        },
+        {
+          "name": "Bob",
+          "op": false
+        }
+      ],
+      "session": 0,
+      "status": "passed",
+      "skipReason": null,
+      "reset": {
+        "durationMs": 3500,
+        "error": null
+      },
+      "steps": [
+        {
+          "index": 0,
+          "phase": "beforeEach",
+          "fixture": null,
+          "on": "server",
+          "action": "command",
+          "label": "say fukurou: next test",
+          "status": "passed",
+          "durationMs": 9,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 1,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "command",
+          "label": "fill 0 -60 0 0 -50 0 minecraft:stone",
+          "status": "passed",
+          "durationMs": 18,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 2,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "command",
+          "label": "fill 0 -60 8 0 -50 8 minecraft:stone",
+          "status": "passed",
+          "durationMs": 15,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 3,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "command",
+          "label": "tp Alice 0.5 -49 0.5 0 30",
+          "status": "passed",
+          "durationMs": 11,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 4,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "command",
+          "label": "tp Bob 0.5 -49 8.5 180 -15",
+          "status": "passed",
+          "durationMs": 10,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 5,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": null,
+          "action": "wait",
+          "label": "2s",
+          "status": "passed",
+          "durationMs": 2003,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 6,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "assert_no_log",
+          "label": "Exception",
+          "status": "passed",
+          "durationMs": 4,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 7,
+          "phase": "fixture",
+          "fixture": "front-view",
+          "on": "Alice",
+          "action": "press_key",
+          "label": "F5",
+          "status": "passed",
+          "durationMs": 61,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 8,
+          "phase": "fixture",
+          "fixture": "front-view",
+          "on": "Alice",
+          "action": "press_key",
+          "label": "F5",
+          "status": "passed",
+          "durationMs": 61,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 9,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "chat",
+          "label": "/st :thinking-face:",
+          "status": "passed",
+          "durationMs": 305,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 10,
+          "phase": "test",
+          "fixture": null,
+          "on": "server",
+          "action": "wait_for_log",
+          "label": "Alice issued server command: /st :thinking-face:",
+          "status": "passed",
+          "durationMs": 412,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 11,
+          "phase": "test",
+          "fixture": null,
+          "on": null,
+          "action": "wait",
+          "label": "1s",
+          "status": "passed",
+          "durationMs": 1001,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 12,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "screenshot",
+          "label": "after-stamp",
+          "status": "passed",
+          "durationMs": 1904,
+          "error": null,
+          "screenshot": "tests/stamp-thinking-face/screenshots/Alice/after-stamp.png"
+        },
+        {
+          "index": 13,
+          "phase": "test",
+          "fixture": null,
+          "on": "Bob",
+          "action": "screenshot",
+          "label": "after-stamp",
+          "status": "passed",
+          "durationMs": 1873,
+          "error": null,
+          "screenshot": "tests/stamp-thinking-face/screenshots/Bob/after-stamp.png"
+        },
+        {
+          "index": 14,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "assert_no_log",
+          "label": "\\[CHAT\\].*(Unknown( or incomplete)? command|Stamp not found)",
+          "status": "passed",
+          "durationMs": 3,
+          "error": null,
+          "screenshot": null
+        }
+      ],
+      "failure": null,
+      "screenshots": [
+        {
+          "player": "Alice",
+          "name": "after-stamp",
+          "path": "tests/stamp-thinking-face/screenshots/Alice/after-stamp.png",
+          "width": 32,
+          "height": 18,
+          "stepIndex": 12
+        },
+        {
+          "player": "Bob",
+          "name": "after-stamp",
+          "path": "tests/stamp-thinking-face/screenshots/Bob/after-stamp.png",
+          "width": 32,
+          "height": 18,
+          "stepIndex": 13
+        }
+      ],
+      "logRanges": {
+        "logs/sessions/0/server.log": {
+          "from": 14,
+          "to": 28
+        },
+        "logs/sessions/0/clients/Alice.log": {
+          "from": 6,
+          "to": 8
+        },
+        "logs/sessions/0/clients/Bob.log": {
+          "from": 6,
+          "to": 8
+        }
+      },
+      "startedAt": "2026-09-24T03:02:10Z",
+      "durationMs": 30500
+    },
+    {
+      "id": "stamp-sleeping-face",
+      "name": "stamp-sleeping-face",
+      "order": 1,
+      "source": "file:game-test/scenarios/stamp-sleeping-face.json",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "tags": [
+        "stamps"
+      ],
+      "isolation": "reset",
+      "timeout": 600,
+      "versions": null,
+      "players": [
+        {
+          "name": "Alice",
+          "op": true
+        },
+        {
+          "name": "Bob",
+          "op": false
+        }
+      ],
+      "session": 0,
+      "status": "failed",
+      "skipReason": null,
+      "reset": {
+        "durationMs": 3300,
+        "error": null
+      },
+      "steps": [
+        {
+          "index": 0,
+          "phase": "beforeEach",
+          "fixture": null,
+          "on": "server",
+          "action": "command",
+          "label": "say fukurou: next test",
+          "status": "passed",
+          "durationMs": 9,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 1,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "command",
+          "label": "fill 0 -60 0 0 -50 0 minecraft:stone",
+          "status": "passed",
+          "durationMs": 18,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 2,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "command",
+          "label": "fill 0 -60 8 0 -50 8 minecraft:stone",
+          "status": "passed",
+          "durationMs": 15,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 3,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "command",
+          "label": "tp Alice 0.5 -49 0.5 0 30",
+          "status": "passed",
+          "durationMs": 11,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 4,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "command",
+          "label": "tp Bob 0.5 -49 8.5 180 -15",
+          "status": "passed",
+          "durationMs": 10,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 5,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": null,
+          "action": "wait",
+          "label": "2s",
+          "status": "passed",
+          "durationMs": 2003,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 6,
+          "phase": "fixture",
+          "fixture": "arena",
+          "on": "server",
+          "action": "assert_no_log",
+          "label": "Exception",
+          "status": "failed",
+          "durationMs": 4,
+          "error": "server log matched 'Exception': java.lang.IllegalStateException: Unable to find field entityId in PacketPlayOutSpawnEntity",
+          "screenshot": null
+        },
+        {
+          "index": 7,
+          "phase": "fixture",
+          "fixture": "front-view",
+          "on": "Alice",
+          "action": "press_key",
+          "label": "F5",
+          "status": "skipped",
+          "durationMs": null,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 8,
+          "phase": "fixture",
+          "fixture": "front-view",
+          "on": "Alice",
+          "action": "press_key",
+          "label": "F5",
+          "status": "skipped",
+          "durationMs": null,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 9,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "chat",
+          "label": "/st :sleeping-face:",
+          "status": "skipped",
+          "durationMs": null,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 10,
+          "phase": "test",
+          "fixture": null,
+          "on": "server",
+          "action": "wait_for_log",
+          "label": "Alice issued server command: /st :sleeping-face:",
+          "status": "skipped",
+          "durationMs": null,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 11,
+          "phase": "test",
+          "fixture": null,
+          "on": null,
+          "action": "wait",
+          "label": "1s",
+          "status": "skipped",
+          "durationMs": null,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 12,
+          "phase": "test",
+          "fixture": null,
+          "on": "Bob",
+          "action": "screenshot",
+          "label": "after-stamp",
+          "status": "skipped",
+          "durationMs": null,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 13,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "screenshot",
+          "label": "after-stamp",
+          "status": "skipped",
+          "durationMs": null,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 14,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "assert_no_log",
+          "label": "\\[CHAT\\].*(Unknown( or incomplete)? command|Stamp not found)",
+          "status": "skipped",
+          "durationMs": null,
+          "error": null,
+          "screenshot": null
+        }
+      ],
+      "failure": {
+        "phase": "fixture",
+        "message": "server log matched 'Exception': java.lang.IllegalStateException: Unable to find field entityId in PacketPlayOutSpawnEntity",
+        "stepIndex": 6
+      },
+      "screenshots": [
+        {
+          "player": "Alice",
+          "name": "failure",
+          "path": "tests/stamp-sleeping-face/screenshots/Alice/failure.png",
+          "width": 32,
+          "height": 18,
+          "stepIndex": 6
+        },
+        {
+          "player": "Bob",
+          "name": "failure",
+          "path": "tests/stamp-sleeping-face/screenshots/Bob/failure.png",
+          "width": 32,
+          "height": 18,
+          "stepIndex": 6
+        }
+      ],
+      "logRanges": {
+        "logs/sessions/0/server.log": {
+          "from": 29,
+          "to": 44
+        },
+        "logs/sessions/0/clients/Alice.log": {
+          "from": 9,
+          "to": 10
+        },
+        "logs/sessions/0/clients/Bob.log": {
+          "from": 9,
+          "to": 10
+        }
+      },
+      "startedAt": "2026-09-24T03:02:45Z",
+      "durationMs": 9800
+    },
+    {
+      "id": "stamp-reload",
+      "name": "stamp-reload",
+      "order": 2,
+      "source": "file:game-test/scenarios/stamp-reload.json",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "tags": [
+        "admin"
+      ],
+      "isolation": "reset",
+      "timeout": 600,
+      "versions": null,
+      "players": [
+        {
+          "name": "Bob",
+          "op": true
+        }
+      ],
+      "session": 0,
+      "status": "error",
+      "skipReason": null,
+      "reset": {
+        "durationMs": 450,
+        "error": "fill -16 -60 -16 15 -37 15 minecraft:air: That position is not loaded"
+      },
+      "steps": [
+        {
+          "index": 0,
+          "phase": "beforeEach",
+          "fixture": null,
+          "on": "server",
+          "action": "command",
+          "label": "say fukurou: next test",
+          "status": "skipped",
+          "durationMs": null,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 1,
+          "phase": "test",
+          "fixture": null,
+          "on": "Bob",
+          "action": "chat",
+          "label": "/stamp reload",
+          "status": "skipped",
+          "durationMs": null,
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "index": 2,
+          "phase": "test",
+          "fixture": null,
+          "on": "server",
+          "action": "wait_for_log",
+          "label": "Reloaded \\d+ stamps",
+          "status": "skipped",
+          "durationMs": null,
+          "error": null,
+          "screenshot": null
+        }
+      ],
+      "failure": {
+        "phase": "reset",
+        "message": "fill -16 -60 -16 15 -37 15 minecraft:air: That position is not loaded",
+        "stepIndex": null
+      },
+      "screenshots": [],
+      "logRanges": {
+        "logs/sessions/0/server.log": {
+          "from": 45,
+          "to": 47
+        }
+      },
+      "startedAt": "2026-09-24T03:03:00Z",
+      "durationMs": 450
+    },
+    {
+      "id": "stamp-legacy-format",
+      "name": "stamp-legacy-format",
+      "order": 3,
+      "source": "file:game-test/scenarios/stamp-legacy-format.json",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "tags": [
+        "stamps",
+        "legacy"
+      ],
+      "isolation": "fresh-server",
+      "timeout": 600,
+      "versions": "1.21.6-1.21.10",
+      "players": [
+        {
+          "name": "Alice",
+          "op": true
+        }
+      ],
+      "session": null,
+      "status": "skipped",
+      "skipReason": "versions: 1.21.6-1.21.10 does not include 1.21.11",
+      "reset": null,
+      "steps": [],
+      "failure": null,
+      "screenshots": [],
+      "logRanges": null,
+      "startedAt": null,
+      "durationMs": null
+    }
+  ],
+  "failure": null,
+  "logs": [
+    {
+      "kind": "harness",
+      "path": "logs/harness.log",
+      "player": null
+    }
+  ],
+  "startedAt": "2026-09-24T03:00:05Z",
+  "finishedAt": "2026-09-24T03:03:50Z",
+  "durationMs": 225000,
   "ci": {
     "repository": "morinoparty/MineStamp",
     "sha": "abc1234def5678abc1234def5678abc1234def56",
@@ -50,84 +732,5 @@
     "runId": "123",
     "runAttempt": "1",
     "serverUrl": "https://github.com"
-  },
-  "steps": [
-    {
-      "index": 0,
-      "on": "server",
-      "action": "command",
-      "label": "time set noon",
-      "status": "passed",
-      "durationMs": 11
-    },
-    {
-      "index": 1,
-      "on": "Alice",
-      "action": "chat",
-      "label": ":thinking_face:",
-      "status": "passed",
-      "durationMs": 310
-    },
-    {
-      "index": 2,
-      "on": "server",
-      "action": "wait_for_log",
-      "label": "Stamp sent",
-      "status": "failed",
-      "durationMs": 30000,
-      "error": "Timed out after 30s waiting for server log matching 'Stamp sent'"
-    },
-    {
-      "index": 3,
-      "on": "Alice",
-      "action": "screenshot",
-      "label": "stamp-thinking-face",
-      "status": "skipped"
-    },
-    {
-      "index": 4,
-      "on": "Bob",
-      "action": "screenshot",
-      "label": "stamp-thinking-face",
-      "status": "skipped"
-    }
-  ],
-  "failure": {
-    "phase": "scenario",
-    "message": "Timed out after 30s waiting for server log matching 'Stamp sent'",
-    "stepIndex": 2
-  },
-  "screenshots": [
-    {
-      "player": "Alice",
-      "name": "failure",
-      "path": "screenshots/Alice/failure.png",
-      "width": 32,
-      "height": 18,
-      "stepIndex": 2
-    }
-  ],
-  "logs": [
-    {
-      "kind": "harness",
-      "path": "logs/harness.log"
-    },
-    {
-      "kind": "server",
-      "path": "logs/server.log"
-    },
-    {
-      "kind": "client",
-      "player": "Alice",
-      "path": "logs/clients/Alice.log"
-    },
-    {
-      "kind": "client",
-      "player": "Bob",
-      "path": "logs/clients/Bob.log"
-    }
-  ],
-  "startedAt": "2026-09-24T03:00:05Z",
-  "finishedAt": "2026-09-24T03:04:40Z",
-  "durationMs": 275000
+  }
 }

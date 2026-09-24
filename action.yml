@@ -1,5 +1,5 @@
 name: fukurou
-description: Run an in-game scenario against one Minecraft (Paper) version with real vanilla clients, and upload screenshots, logs and result.json.
+description: Run a suite of in-game tests against one Minecraft (Paper) version in one server session, with real vanilla clients, and upload screenshots, logs and result.json.
 author: morinoparty
 branding:
   icon: camera
@@ -12,14 +12,38 @@ inputs:
   minecraft-version:
     description: 'A single Minecraft version, such as "1.21.11". Use morinoparty/fukurou/versions to expand ranges into a matrix.'
     required: true
+  suite:
+    description: Path to a suite file (fukurou.yml), relative to the workspace. Its scenarios globs, players and fixtures are shared by every test.
+    required: false
+    default: ""
+  scenarios:
+    description: Glob patterns of scenario files to run, relative to the workspace, separated by newlines or commas.
+    required: false
+    default: ""
   scenario:
-    description: Inline scenario (JSON or YAML). Use either this or scenario-file.
+    description: Inline scenario (JSON or YAML), run as the test "inline". Combine freely with the other selection inputs.
     required: false
     default: ""
   scenario-file:
-    description: Path to a scenario file (JSON or YAML), relative to the workspace. Use either this or scenario.
+    description: Path to a scenario file (JSON or YAML), relative to the workspace. Multiple lines run one test each.
     required: false
     default: ""
+  tests:
+    description: Only run tests whose id matches one of these ids or glob patterns, separated by newlines or commas. Empty runs every selected test.
+    required: false
+    default: ""
+  tags:
+    description: Only run tests that have one of these tags, separated by newlines or commas. Combined with "tests", a test must match both.
+    required: false
+    default: ""
+  isolation:
+    description: 'Force "reset" or "fresh-server" isolation for every test, overriding what each test and the suite declare. Empty keeps each test''s own isolation.'
+    required: false
+    default: ""
+  fail-fast:
+    description: Set to "true" to stop the suite at the first failed or errored test, skipping the rest.
+    required: false
+    default: "false"
   plugins-dir:
     description: Directory that contains the plugin jars under test.
     required: false
@@ -79,8 +103,14 @@ inputs:
 
 outputs:
   result:
-    description: '"passed", "failed" or "error", read from result.json ("error" when it is missing).'
+    description: '"passed", "failed" or "error", read from result.json''s run status ("error" when it is missing).'
     value: ${{ steps.outputs.outputs.result }}
+  tests-summary:
+    description: 'Test counts as JSON, read from result.json''s summary, for example {"total":3,"passed":2,"failed":1,"error":0,"skipped":0}. Empty object when result.json is missing.'
+    value: ${{ steps.outputs.outputs.tests-summary }}
+  failed-tests:
+    description: Comma-separated ids of the tests whose status is "failed" or "error".
+    value: ${{ steps.outputs.outputs.failed-tests }}
   result-file:
     description: Path to result.json.
     value: ${{ steps.outputs.outputs.result-file }}
@@ -101,6 +131,8 @@ runs:
       env:
         ACCEPT_EULA: ${{ inputs.accept-eula }}
         MINECRAFT_VERSION: ${{ inputs.minecraft-version }}
+        SUITE: ${{ inputs.suite }}
+        SCENARIOS: ${{ inputs.scenarios }}
         SCENARIO: ${{ inputs.scenario }}
         SCENARIO_FILE: ${{ inputs.scenario-file }}
         ARTIFACT_NAME: ${{ inputs.artifact-name }}
@@ -116,12 +148,9 @@ runs:
           echo "::error::minecraft-version is required."
           exit 2
         fi
-        if [ -z "$SCENARIO" ] && [ -z "$SCENARIO_FILE" ]; then
-          echo "::error::Set either scenario or scenario-file."
-          exit 2
-        fi
-        if [ -n "$SCENARIO" ] && [ -n "$SCENARIO_FILE" ]; then
-          echo "::error::Set only one of scenario and scenario-file."
+        # suite / scenarios / scenario-file / scenario はどれも組み合わせられる。1 つも無ければ選択が空になる
+        if [ -z "$SUITE" ] && [ -z "$SCENARIOS" ] && [ -z "$SCENARIO_FILE" ] && [ -z "$SCENARIO" ]; then
+          echo "::error::Set at least one of suite, scenarios, scenario-file and scenario."
           exit 2
         fi
         # 入力の既定値から別の入力を参照できないため、成果物名はここで決める
@@ -137,6 +166,39 @@ runs:
           echo "out-dir=$OUT_DIR"
         } >> "$GITHUB_OUTPUT"
 
+    - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      # 既定では利用者のリポジトリを見て uv の版とキャッシュキーを決めてしまうため、fukurou 自身を基準にする
+      with:
+        version: "0.12.18"
+        working-directory: ${{ github.action_path }}
+        cache-dependency-glob: uv.lock
+        cache-suffix: fukurou
+        ignore-empty-workdir: "true"
+
+    # 選択引数のタイポ（存在しないスイート、0 件になるフィルタなど）を、apt もサーバーのダウンロードも
+    # 始める前に見つける。fukurou list は選択が不正または 0 件なら exit 2 になる
+    - name: Validate the suite
+      shell: bash
+      env:
+        SUITE: ${{ inputs.suite }}
+        SCENARIOS: ${{ inputs.scenarios }}
+        SCENARIO: ${{ inputs.scenario }}
+        SCENARIO_FILE: ${{ inputs.scenario-file }}
+        TESTS: ${{ inputs.tests }}
+        TAGS: ${{ inputs.tags }}
+        ISOLATION: ${{ inputs.isolation }}
+      run: |
+        args=(list)
+        [ -n "$SUITE" ] && args+=(--suite "$SUITE")
+        [ -n "$SCENARIOS" ] && args+=(--scenarios="$SCENARIOS")
+        [ -n "$SCENARIO_FILE" ] && args+=(--scenario-file="$SCENARIO_FILE")
+        [ -n "$SCENARIO" ] && args+=(--scenario="$SCENARIO")
+        [ -n "$TESTS" ] && args+=(--test="$TESTS")
+        [ -n "$TAGS" ] && args+=(--tag="$TAGS")
+        [ -n "$ISOLATION" ] && args+=(--isolation "$ISOLATION")
+        selected="$(uv run --frozen --no-dev --project "$GITHUB_ACTION_PATH" fukurou "${args[@]}")"
+        echo "Selected tests: $selected"
+
     - name: Install the virtual display and client dependencies
       if: inputs.skip-system-deps != 'true'
       shell: bash
@@ -147,15 +209,6 @@ runs:
           xvfb xdotool \
           libgl1 libgl1-mesa-dri libglx-mesa0 libegl1 libopenal1 \
           libxrandr2 libxinerama1 libxcursor1 libxi6
-
-    - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-      # 既定では利用者のリポジトリを見て uv の版とキャッシュキーを決めてしまうため、fukurou 自身を基準にする
-      with:
-        version: "0.12.18"
-        working-directory: ${{ github.action_path }}
-        cache-dependency-glob: uv.lock
-        cache-suffix: fukurou
-        ignore-empty-workdir: "true"
 
     - name: Determine the Java version for the server
       id: java
@@ -194,7 +247,7 @@ runs:
         restore-keys: |
           fukurou-portablemc-5.0.4-${{ runner.os }}-
 
-    - name: Run the in-game scenario
+    - name: Run the tests
       id: run
       # 失敗しても成果物のアップロードと outputs の設定を続け、最後のステップで失敗させる
       continue-on-error: true
@@ -205,8 +258,14 @@ runs:
         # github: 形式の依存プラグインを GitHub API から取得するときに使う
         GITHUB_TOKEN: ${{ inputs.github-token }}
         MINECRAFT_VERSION: ${{ inputs.minecraft-version }}
+        SUITE: ${{ inputs.suite }}
+        SCENARIOS: ${{ inputs.scenarios }}
         SCENARIO: ${{ inputs.scenario }}
         SCENARIO_FILE: ${{ inputs.scenario-file }}
+        TESTS: ${{ inputs.tests }}
+        TAGS: ${{ inputs.tags }}
+        ISOLATION: ${{ inputs.isolation }}
+        FAIL_FAST: ${{ inputs.fail-fast }}
         PLUGINS_DIR: ${{ inputs.plugins-dir }}
         PLUGINS: ${{ inputs.plugins }}
         DEPENDENCIES: ${{ inputs.dependencies }}
@@ -228,10 +287,29 @@ runs:
           --work-dir "$WORK_DIR"
           --out-dir "$OUT_DIR"
         )
+        if [ -n "$SUITE" ]; then
+          args+=(--suite "$SUITE")
+        fi
+        if [ -n "$SCENARIOS" ]; then
+          args+=(--scenarios="$SCENARIOS")
+        fi
         if [ -n "$SCENARIO_FILE" ]; then
-          args+=(--scenario-file "$SCENARIO_FILE")
-        else
+          args+=(--scenario-file="$SCENARIO_FILE")
+        fi
+        if [ -n "$SCENARIO" ]; then
           args+=(--scenario="$SCENARIO")
+        fi
+        if [ -n "$TESTS" ]; then
+          args+=(--test="$TESTS")
+        fi
+        if [ -n "$TAGS" ]; then
+          args+=(--tag="$TAGS")
+        fi
+        if [ -n "$ISOLATION" ]; then
+          args+=(--isolation "$ISOLATION")
+        fi
+        if [ "$FAIL_FAST" = "true" ]; then
+          args+=(--fail-fast)
         fi
         if [ -n "$DEPENDENCIES" ]; then
           args+=(--dependencies="$DEPENDENCIES")
@@ -266,23 +344,77 @@ runs:
       env:
         RESULT_FILE: ${{ steps.prepare.outputs.out-dir }}/result.json
       run: |
-        # 引数の解析前に失敗すると result.json が無いため、その場合は error として扱う
-        result="$(python3 -c '
-        import json, sys
-        try:
-            with open(sys.argv[1], encoding="utf-8") as file:
-                status = json.load(file).get("status")
-        except (OSError, ValueError, AttributeError):
-            status = None
-        print(status if status in ("passed", "failed", "error") else "error")
-        ' "$RESULT_FILE")"
-        echo "fukurou result: $result"
-        {
-          echo "result=$result"
-          echo "result-file=$RESULT_FILE"
-        } >> "$GITHUB_OUTPUT"
+        # result.json が無い（引数の解析前に失敗した等）場合も error 扱いにし、outputs とステップサマリーの表をまとめて書く
+        python3 - "$RESULT_FILE" <<'PY'
+        import json
+        import os
+        import sys
 
-    - name: Fail if the scenario did not pass
+        result_file = sys.argv[1]
+        try:
+            with open(result_file, encoding="utf-8") as file:
+                result = json.load(file)
+        except (OSError, ValueError):
+            result = {}
+
+        status = result.get("status")
+        if status not in ("passed", "failed", "error"):
+            status = "error"
+        tests = result.get("tests", [])
+        summary = result.get("summary") or {}
+        failed_ids = [test["id"] for test in tests if test.get("status") in ("failed", "error")]
+
+        print(f"fukurou result: {status}")
+        github_output = os.environ.get("GITHUB_OUTPUT")
+        if github_output:
+            with open(github_output, "a", encoding="utf-8") as file:
+                file.write(f"result={status}\n")
+                file.write(f"tests-summary={json.dumps(summary, separators=(',', ':'))}\n")
+                file.write(f"failed-tests={','.join(failed_ids)}\n")
+                file.write(f"result-file={result_file}\n")
+
+        def cell(text):
+            # Markdown の表が壊れないよう、改行とパイプを潰す
+            return str(text).replace("\r", " ").replace("\n", " ").replace("|", "\\|")
+
+        def duration(test):
+            ms = test.get("durationMs")
+            return f"{ms / 1000:.1f}s" if isinstance(ms, (int, float)) else "–"
+
+        def failure_of(test):
+            failure = test.get("failure")
+            if isinstance(failure, dict) and failure.get("message"):
+                return f"{failure['message']} ({failure.get('phase')})"
+            reset = test.get("reset")
+            if isinstance(reset, dict) and reset.get("error"):
+                return reset["error"]
+            return test.get("skipReason") or ""
+
+        github_step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if github_step_summary:
+            lines = [f"### fukurou: Minecraft {result.get('minecraft', {}).get('version', '?')}", ""]
+            run_failure = result.get("failure")
+            if isinstance(run_failure, dict):
+                lines.append(f"⚠️ **{run_failure.get('phase')}**: {cell(run_failure.get('message'))}")
+                lines.append("")
+            counts = ", ".join(
+                f"{summary.get(key, 0)} {key}" for key in ("passed", "failed", "error", "skipped") if summary.get(key)
+            )
+            lines.append(f"{summary.get('total', 0)} tests: {counts}" if counts else f"{summary.get('total', 0)} tests")
+            lines.append("")
+            if tests:
+                lines.append("| Test | Status | Duration | Failure |")
+                lines.append("| --- | --- | --- | --- |")
+                for test in tests:
+                    lines.append(
+                        f"| {cell(test.get('id'))} | {cell(test.get('status'))} | {duration(test)} | {cell(failure_of(test))} |"
+                    )
+                lines.append("")
+            with open(github_step_summary, "a", encoding="utf-8") as file:
+                file.write("\n".join(lines) + "\n")
+        PY
+
+    - name: Fail if the tests did not pass
       if: always() && steps.prepare.outcome == 'success' && steps.run.outcome != 'success'
       shell: bash
       env:

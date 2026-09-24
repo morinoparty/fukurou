@@ -62,6 +62,13 @@ class MinecraftWindow:
         keycode = unmodified_keycode(self.display, keysym)
         _xdotool(self.display, "key", "--clearmodifiers", "--delay", "100", str(keycode))
 
+    def press_chord(self, *keysyms: str) -> None:
+        """複数のキーを同時に押して離す（F3+d など）。先に書いたキーから順に押し、逆順に離す。"""
+        self.focus()
+        # press_key と同じく修飾キーなしのキーコードに変換し、xdotool の "+" 区切りで 1 つのコードとして送る
+        keycodes = [str(unmodified_keycode(self.display, keysym)) for keysym in keysyms]
+        _xdotool(self.display, "key", "--clearmodifiers", "--delay", "100", "+".join(keycodes))
+
     def type_text(self, text: str) -> None:
         """文字列をキー入力する。記号の Shift 等は xdotool が自動で付与する。"""
         self.focus()
