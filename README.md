@@ -88,6 +88,9 @@ jobs:
 
 The `ui` action downloads the `fukurou-paper-*` artifacts, builds one viewer page, uploads it as the `fukurou-site` artifact, and publishes it to S3-compatible storage such as Cloudflare R2 when credentials are set. Its `url` output (exposed here as the job output `fukurou_url`) points at the published `index.html`, so later jobs can, for example, post it to the pull request. On pull requests from forks the secrets are empty, and the site is only kept as an artifact.
 
+> [!WARNING]
+> GitHub drops a job output that contains the value of any secret. If a secret (for example the bucket name) also appears in `public-base-url`, `fukurou_url` arrives empty with the warning `Skip output 'fukurou_url' since it may contain secret`. In that case, pass the non-secret `uploaded` output between jobs instead, and build the URL in the job that uses it.
+
 The server's Java version is picked automatically: the newer of the version Mojang requires for that Minecraft release and the version your plugin jars are compiled for. The clients use Mojang's own Java runtime. The action installs the server's JDK with `actions/setup-java`, which leaves `JAVA_HOME` and `PATH` pointing at it for the rest of the job; build your plugin before the fukurou step, as above, or set up Java again afterwards.
 
 ## Scenario format
