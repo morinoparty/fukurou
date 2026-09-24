@@ -1,0 +1,15 @@
+---- Minecraft Crash Report ----
+// Sample crash report for the dev site
+
+Time: 2026-09-24 03:01:58
+Description: Unexpected error
+
+java.lang.IllegalStateException: Rendering screen while another screen is open
+	at net.minecraft.client.Minecraft.runTick(Minecraft.java:1234)
+	at net.minecraft.client.Minecraft.run(Minecraft.java:800)
+Caused by: java.lang.NullPointerException: screen
+	at net.minecraft.client.gui.screens.Screen.render(Screen.java:99)
+	... 4 more
+
+-- System Details --
+	Minecraft Version: 1.21.6

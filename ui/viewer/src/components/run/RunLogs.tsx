@@ -2,19 +2,21 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { css } from "styled-system/css";
 import { Button } from "../../chlorophyll";
-import type { LogInfo, ManifestRun } from "../../contract";
+import type { ManifestRun } from "../../contract";
 import { findLogIndex } from "../../lib/logs";
+import type { RunLog } from "../../lib/runs";
 import { buttonLink } from "../../styles";
 import { LogTabs } from "../logs/LogTabs";
 import { LogView } from "../logs/LogView";
 
 interface RunLogsProps {
   run: ManifestRun;
-  logs: LogInfo[];
+  /** flatLogs(result)。ログビューアの URL の添字はこの配列の添字 */
+  logs: RunLog[];
 }
 
 /**
- * run のページの Logs セクション。サーバー・クライアントなどのログをタブで切り替え、その場で読めるようにする。
+ * run のページの Logs セクション。ハーネス・サーバー・クライアントなどのログをタブで切り替え、その場で読めるようにする。
  * 全画面で読みたいときはログビューアのページへ移る。
  */
 export function RunLogs({ run, logs }: RunLogsProps) {
@@ -29,15 +31,20 @@ export function RunLogs({ run, logs }: RunLogsProps) {
     <div className={css({ display: "flex", flexDirection: "column", gap: "3" })}>
       <div className={css({ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "2" })}>
         <div className={css({ flex: "1 1 auto", minWidth: "0" })}>
-          <LogTabs logs={logs} current={logs.indexOf(log)} mode={{ kind: "select", onSelect: setSelected }} label="Logs of this run" />
+          <LogTabs
+            logs={logs}
+            current={logs.indexOf(log)}
+            mode={{ kind: "select", onSelect: setSelected }}
+            label="Logs of this run"
+          />
         </div>
         <Button asChild size="sm" intent="secondary" className={buttonLink}>
-          <Link to="/runs/$id/logs/$logIndex" params={{ id: run.id, logIndex: String(logs.indexOf(log)) }}>
+          <Link to="/runs/$runId/logs/$logIndex" params={{ runId: run.id, logIndex: String(logs.indexOf(log)) }}>
             Open in log viewer
           </Link>
         </Button>
       </div>
-      <LogView key={log.path} run={run} log={log} compact />
+      <LogView key={`${log.session ?? "run"}:${log.path}`} run={run} log={log} compact />
       <p className={css({ fontSize: "xs", color: "fg.muted" })}>
         Logs are only published when the site was built with logs included; otherwise download the <code>{run.artifact}</code>{" "}
         artifact.

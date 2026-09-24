@@ -83,3 +83,30 @@ def test_run_takes_only_a_single_version():
     for spec in ("latest", "1.21.6-", "1.20.5-1.21.11"):
         with pytest.raises(VersionError, match="single Minecraft version"):
             check_single_version(spec)
+
+
+def test_parse_spec_accepts_versions_and_ranges_but_not_latest():
+    from fukurou.versions import VersionSpec, parse_spec
+
+    assert parse_spec(" 1.21.11 ") == VersionSpec("1.21.11", "1.21.11")
+    assert parse_spec("1.21.9-") == VersionSpec("1.21.9", None)
+    assert parse_spec("1.21.6 - 1.21.11") == VersionSpec("1.21.6", "1.21.11")
+    for spec, message in (("latest", "not allowed"), ("", "empty"), ("-1.21.11", "lower bound")):
+        with pytest.raises(VersionError, match=message):
+            parse_spec(spec)
+
+
+def test_spec_includes_uses_the_manifest_order():
+    from fukurou.versions import spec_includes
+
+    releases = MANIFEST.release_ids()
+    # 番号の大小ではなくマニフェストの並びで比べるので、1.21.11 と 26.x の境界もまたげる
+    assert spec_includes("1.21.11-", "26.2", releases)
+    assert not spec_includes("26.1.2-", "1.21.11", releases)
+    assert spec_includes("1.20.1-26.1.2", "1.20.1", releases)
+    assert not spec_includes("1.20.1-26.1.2", "26.2", releases)
+    # 単一のバージョンは一致だけを見る
+    assert spec_includes("1.21.11", "1.21.11", releases)
+    assert not spec_includes("1.21.11", "26.2", releases)
+    with pytest.raises(VersionError, match="not a Minecraft release"):
+        spec_includes("1.21.99-", "26.2", releases)

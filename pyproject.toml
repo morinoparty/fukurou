@@ -1,7 +1,7 @@
 [project]
 name = "fukurou"
-version = "1.0.0"
-description = "In-game test runner for Minecraft plugins: drive real clients from JSON scenarios"
+version = "2.0.0"
+description = "In-game test runner for Minecraft plugins: run a suite of tests against real clients in one server session"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"

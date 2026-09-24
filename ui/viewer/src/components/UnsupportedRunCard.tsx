@@ -1,5 +1,6 @@
 import { css } from "styled-system/css";
 import type { ManifestRun } from "../contract";
+import { assetUrl } from "../lib/assets";
 import { runBadgeStatus, unsupportedReason } from "../lib/runs";
 import { panelStyle } from "../styles";
 
@@ -21,6 +22,16 @@ export function UnsupportedRunCard({ run }: UnsupportedRunCardProps) {
         <span className={css({ fontSize: "xs", color: "fg.muted", wordBreak: "break-all" })}>{run.artifact}</span>
       </div>
       <p className={css({ mt: "2", color: "fg.muted" })}>{unsupportedReason(run)}</p>
+      {/* result が無くてもログがコピーされていれば、それがこのバージョンの唯一の手がかりなので生ファイルへリンクする */}
+      {run.logs && run.logs.length > 0 && (
+        <p className={css({ mt: "2", fontSize: "sm", display: "flex", flexWrap: "wrap", gap: "3" })}>
+          {run.logs.map((log) => (
+            <a key={log.path} href={assetUrl(run, log.path)} target="_blank" rel="noreferrer">
+              {log.player ? `${log.kind} log (${log.player})` : `${log.kind} log`}
+            </a>
+          ))}
+        </p>
+      )}
     </div>
   );
 }

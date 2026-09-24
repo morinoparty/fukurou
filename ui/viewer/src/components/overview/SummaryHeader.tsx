@@ -1,14 +1,16 @@
 import { css, cx } from "styled-system/css";
-import type { ManifestV1 } from "../../contract";
+import type { ManifestV2 } from "../../contract";
 import { commitUrl } from "../../lib/ci";
 import { formatDateTime, shortHash } from "../../lib/format";
 import { eyebrow, pageTitle, panelStyle } from "../../styles";
 
 const meta = css({ mt: "1", display: "flex", flexWrap: "wrap", columnGap: "4", rowGap: "1", color: "fg.muted" });
+const headline = css({ mt: "3", textStyle: "lg", color: "fg" });
+const subline = css({ mt: "0.5", fontSize: "sm", color: "fg.muted" });
 const counts = css({
   mt: "4",
   display: "grid",
-  gridTemplateColumns: { base: "repeat(2, minmax(0, 1fr))", sm: "repeat(4, minmax(0, 1fr))" },
+  gridTemplateColumns: { base: "repeat(2, minmax(0, 1fr))", sm: "repeat(3, minmax(0, 1fr))", md: "repeat(5, minmax(0, 1fr))" },
   gap: "2",
 });
 const tile = css(panelStyle, { px: "3", py: "2" });
@@ -20,16 +22,40 @@ const TONES = {
   passed: css({ color: "fg.success" }),
   failed: css({ color: "fg.error" }),
   error: css({ color: "fg.warning" }),
+  skipped: css({ color: "fg.muted" }),
   zero: css({ color: "fg.muted" }),
 };
 
-interface SummaryHeaderProps {
-  manifest: ManifestV1;
+/** "2 tests × 6 versions: 14 passed, 2 failed, 2 skipped" の本文 */
+function headlineText(manifest: ManifestV2): string {
+  const tests = manifest.tests.length;
+  const versions = manifest.runs.length;
+  const counts = manifest.summary?.tests;
+  const parts = (["passed", "failed", "error", "skipped"] as const)
+    .filter((key) => (counts?.[key] ?? 0) > 0)
+    .map((key) => `${counts?.[key] ?? 0} ${key}`);
+  const shape = `${tests} ${tests === 1 ? "test" : "tests"} × ${versions} ${versions === 1 ? "version" : "versions"}`;
+  return parts.length > 0 ? `${shape}: ${parts.join(", ")}` : shape;
 }
 
-/** 一覧ページの見出し。タイトル、件数の集計、CI へのリンクを並べる */
+/** 副行: run（バージョン）単位の件数 */
+function runsText(manifest: ManifestV2): string {
+  const runs = manifest.summary?.runs;
+  if (!runs) return "";
+  const parts = (["passed", "failed", "error"] as const)
+    .filter((key) => (runs[key] ?? 0) > 0)
+    .map((key) => `${runs[key]} ${key}`);
+  return `${runs.total ?? manifest.runs.length} ${runs.total === 1 ? "version run" : "version runs"}${parts.length > 0 ? ` (${parts.join(", ")})` : ""}`;
+}
+
+interface SummaryHeaderProps {
+  manifest: ManifestV2;
+}
+
+/** 一覧ページの見出し。タイトル、テスト × バージョンの集計、CI へのリンクを並べる */
 export function SummaryHeader({ manifest }: SummaryHeaderProps) {
   const { summary, ci } = manifest;
+  const tests = summary?.tests;
   const commit = commitUrl(ci);
   return (
     <header>
@@ -40,11 +66,14 @@ export function SummaryHeader({ manifest }: SummaryHeaderProps) {
         {ci?.runUrl && <a href={ci.runUrl}>CI run{ci.runId ? ` #${ci.runId}` : ""}</a>}
         <span>Generated {formatDateTime(manifest.generatedAt)}</span>
       </div>
+      <p className={headline}>{headlineText(manifest)}</p>
+      <p className={subline}>{runsText(manifest)}</p>
       <dl className={counts}>
-        <Count label="Total" value={summary?.total} tone="total" />
-        <Count label="Passed" value={summary?.passed} tone="passed" />
-        <Count label="Failed" value={summary?.failed} tone="failed" />
-        <Count label="Error" value={summary?.error} tone="error" />
+        <Count label="Test runs" value={tests?.total} tone="total" />
+        <Count label="Passed" value={tests?.passed} tone="passed" />
+        <Count label="Failed" value={tests?.failed} tone="failed" />
+        <Count label="Error" value={tests?.error} tone="error" />
+        <Count label="Skipped" value={tests?.skipped} tone="skipped" />
       </dl>
     </header>
   );

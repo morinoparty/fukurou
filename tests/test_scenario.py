@@ -108,15 +108,22 @@ def test_source_records_name_origin_and_hash(tmp_path):
     path = tmp_path / "hello-world.yml"
     text = "players: [{name: Alice}]\nsteps: [{action: wait, seconds: 1}]\n"
     path.write_text(text, encoding="utf-8")
-    info = ScenarioSource.from_file(path).info()
-    assert info.name == "hello-world"
-    assert info.source == f"file:{path.as_posix()}"
-    assert info.sha256 == hashlib.sha256(text.encode()).hexdigest()
-    assert ScenarioSource.inline(text).info().name == "inline"
+    source = ScenarioSource.from_file(path)
+    assert source.name == "hello-world"
+    assert source.source == f"file:{path.as_posix()}"
+    assert source.sha256 == hashlib.sha256(text.encode()).hexdigest()
+    assert ScenarioSource.inline(text).name == "inline"
 
 
 def test_bundled_examples_are_valid():
-    paths = sorted(EXAMPLES_DIR.glob("*.json")) + sorted(EXAMPLES_DIR.glob("*.y*ml"))
+    # examples/ のスイートファイルは慣習で "fukurou.yml"（README・docs/usage.md 参照）。
+    # シナリオはトップレベルの単発の例と examples/scenarios/ 配下にある
+    paths = (
+        sorted(EXAMPLES_DIR.glob("*.json"))
+        + sorted(path for path in EXAMPLES_DIR.glob("*.y*ml") if path.name != "fukurou.yml")
+        + sorted(EXAMPLES_DIR.glob("scenarios/*.json"))
+        + sorted(EXAMPLES_DIR.glob("scenarios/*.y*ml"))
+    )
     assert paths
     for path in paths:
         assert load_scenario(path).steps, path.name
@@ -129,3 +136,32 @@ def test_yaml_on_is_not_a_boolean():
     ).parse()
     assert parsed.steps == [Chat(on="Alice", text="yes")]
     assert parsed.players[0].op is True
+
+
+def test_test_metadata_has_defaults_and_players_are_optional():
+    parsed = parse_scenario({"steps": [{"on": "Alice", "action": "chat", "text": "hi"}]})
+    # players を省略した場合、on の検証はスイートの players が決まる discovery で行う
+    assert parsed.players is None
+    assert (parsed.name, parsed.tags, parsed.isolation, parsed.timeout, parsed.versions, parsed.use) == (
+        None, [], None, 600.0, None, []
+    )
+    full = parse_scenario(
+        scenario({"action": "wait", "seconds": 1})
+        | {"name": "Wait", "tags": ["slow"], "isolation": "fresh-server", "timeout": 30, "versions": "1.21.6-1.21.11",
+           "use": ["arena"]}
+    )
+    assert (full.name, full.tags, full.isolation, full.timeout, full.versions, full.use) == (
+        "Wait", ["slow"], "fresh-server", 30.0, "1.21.6-1.21.11", ["arena"]
+    )
+
+
+def test_rejects_invalid_test_metadata():
+    base = scenario({"action": "wait", "seconds": 1})
+    with pytest.raises(ScenarioError, match="'latest' is not allowed"):
+        parse_scenario(base | {"versions": "latest"})
+    with pytest.raises(ScenarioError, match="Input should be 'reset' or 'fresh-server'"):
+        parse_scenario(base | {"isolation": "shared"})
+    with pytest.raises(ScenarioError, match="should match pattern"):
+        parse_scenario(base | {"use": ["../arena"]})
+    with pytest.raises(ScenarioError, match="at least 1 item"):
+        parse_scenario(base | {"players": []})

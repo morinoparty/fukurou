@@ -6,7 +6,7 @@ export function NotFound() {
   return (
     <Message title="Page not found">
       <p>
-        <Link to="/">Back to all runs</Link>
+        <Link to="/">Back to the overview</Link>
       </p>
     </Message>
   );

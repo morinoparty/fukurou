@@ -1,17 +1,19 @@
 # Usage
 
-fukurou has three GitHub Actions. They live in one repository and are released together, so use the same tag (for example `@v1`) for all of them.
+fukurou has three GitHub Actions. They live in one repository and are released together, so use the same tag (for example `@v2`) for all of them.
 
 - [`morinoparty/fukurou/versions`](#morinoparty-fukurou-versions): resolve a version spec to a matrix.
-- [`morinoparty/fukurou`](#morinoparty-fukurou): run a scenario against one version.
+- [`morinoparty/fukurou`](#morinoparty-fukurou): run a suite of tests against one version, in one server session.
 - [`morinoparty/fukurou/ui`](#morinoparty-fukurou-ui): build and publish the viewer site.
+
+See [contract.md](contract.md) for the exact shape of `result.json` and `manifest.json`.
 
 ## `morinoparty/fukurou/versions`
 
 Resolves a version spec against Mojang's version manifest and the Paper API, and outputs a JSON array for `strategy.matrix`. The list is also written to the job summary.
 
 ```yaml
-- uses: morinoparty/fukurou/versions@v1
+- uses: morinoparty/fukurou/versions@v2
   id: versions
   with:
     minecraft-version: 1.21.6-
@@ -39,31 +41,37 @@ Resolves a version spec against Mojang's version manifest and the Paper API, and
 | `1.21.6-` | Every release from 1.21.6 onward whose latest Paper build is `STABLE`. |
 | `1.20.5-1.21.11` | Every release in that range (both ends included) whose latest Paper build is `STABLE`. |
 
-Versions are ordered by Mojang's release order. A spec that names a version older than 1.20 (a single version or the lower bound of a range) is an error, because fukurou supports Minecraft 1.20 or later. The same command is available locally as `fukurou versions <spec> [--max-versions N]`.
+Versions are ordered by Mojang's release order. A spec that names a version older than 1.20 (a single version or the lower bound of a range) is an error, because fukurou supports Minecraft 1.20 or later. The same command is available locally as `fukurou versions <spec> [--max-versions N]`. A test's own `versions:` field uses the same syntax minus `latest` (see [Test fields](#test-fields)).
 
 ## `morinoparty/fukurou`
 
-Runs one scenario against one Minecraft version on the runner, then uploads `out-dir` as an artifact. The step fails when the scenario did not pass, after the artifact is uploaded and the outputs are set.
+Selects a set of tests (see [Selecting tests](#selecting-tests)), runs them against one Minecraft version in one server session on the runner, then uploads `out-dir` as an artifact. The step fails when the run did not pass, after the artifact is uploaded and the outputs are set.
 
 ```yaml
-- uses: morinoparty/fukurou@v1
+- uses: morinoparty/fukurou@v2
   with:
     accept-eula: "true"
     minecraft-version: ${{ matrix.minecraft-version }}
-    scenario-file: game-test/scenarios/hello.yml
+    suite: game-test/fukurou.yml
     plugins-dir: build/libs
     plugins: "*-all.jar"
 ```
 
 What the action does:
 
-1. Installs `xvfb`, `xdotool` and the OpenGL/OpenAL libraries with `apt-get` (unless `skip-system-deps` is `true`).
-2. Installs uv and picks the server's Java version (`java-version: auto` runs `fukurou java`), then installs it with `actions/setup-java` (Temurin).
-3. Restores the PortableMC and Mojang asset cache under `work-dir` with `actions/cache`.
-4. Runs `fukurou run` with Mesa software rendering (`LIBGL_ALWAYS_SOFTWARE=true`).
-5. Uploads `out-dir` with `actions/upload-artifact` (even when the run failed) and sets the outputs.
+1. Checks the inputs and computes `work-dir` / `out-dir` / `artifact-name`.
+2. Installs uv, then runs `fukurou list` with the same selection inputs to catch a bad suite, an empty selection or a typo'd filter **before** installing anything else — the step fails here (exit 2) without touching `apt-get` or downloading the server.
+3. Installs `xvfb`, `xdotool` and the OpenGL/OpenAL libraries with `apt-get` (unless `skip-system-deps` is `true`).
+4. Picks the server's Java version (`java-version: auto` runs `fukurou java`), then installs it with `actions/setup-java` (Temurin).
+5. Restores the PortableMC and Mojang asset cache under `work-dir` with `actions/cache`.
+6. Runs `fukurou run` with Mesa software rendering (`LIBGL_ALWAYS_SOFTWARE=true`): one server session, every selected test's players joined once, tests run in order with a harness reset (or a fresh server, for `isolation: fresh-server` tests) between them.
+7. Uploads `out-dir` with `actions/upload-artifact` (even when the run failed), sets the outputs, and appends a per-test table to the job summary.
 
 `actions/setup-java` changes `JAVA_HOME` and `PATH` for the rest of the job, so later steps in the same job use the server's JDK. If you build or test after the fukurou step, run `actions/setup-java` again with the version you need, or run fukurou in its own job.
+
+### Selecting tests
+
+At least one of `suite`, `scenarios`, `scenario-file` and `scenario` must be set; they combine freely (a suite plus extra ad hoc scenario files, for example). `tests` and `tags` then filter that selection (both given: a test must match both). An empty selection is an error (exit 2), so a typo'd filter fails loudly instead of silently running zero tests.
 
 ### Inputs
 
@@ -71,8 +79,14 @@ What the action does:
 | --- | --- | --- | --- |
 | `accept-eula` | yes | | Must be `true`. fukurou downloads and runs the Minecraft server and clients, so you must accept the [Minecraft EULA](https://aka.ms/MinecraftEULA). |
 | `minecraft-version` | yes | | One Minecraft version, such as `1.21.11`. Use the `versions` action for ranges. |
-| `scenario` | | | Inline scenario (JSON or YAML). Set either `scenario` or `scenario-file`. |
-| `scenario-file` | | | Path to a scenario file (JSON or YAML), relative to the workspace. |
+| `suite` | | | Path to a suite file (`fukurou.yml`), relative to the workspace. Its `scenarios` globs, players and fixtures are shared by every test. |
+| `scenarios` | | | Glob patterns of scenario files to run, relative to the workspace, separated by newlines or commas. |
+| `scenario` | | | Inline scenario (JSON or YAML), run as the test `inline`. |
+| `scenario-file` | | | Path to a scenario file (JSON or YAML), relative to the workspace. Multiple lines run one test each. |
+| `tests` | | | Only run tests whose id matches one of these ids or glob patterns (`fnmatch`), separated by newlines or commas. Empty runs every selected test. |
+| `tags` | | | Only run tests that have one of these tags, separated by newlines or commas. |
+| `isolation` | | | Force `reset` or `fresh-server` for every test, overriding what each test and the suite declare. Empty keeps each test's own isolation. |
+| `fail-fast` | | `false` | Stop the run at the first `failed` or `error` test; the rest are recorded as `skipped`. |
 | `plugins-dir` | | `${{ github.workspace }}` | Directory that contains the plugin jars under test. |
 | `plugins` | | `*.jar` | Glob patterns inside `plugins-dir`, separated by newlines or commas. An empty string installs no plugins. |
 | `dependencies` | | | YAML list of extra plugins to download. See [Dependencies](#dependencies). |
@@ -88,13 +102,15 @@ What the action does:
 | `github-token` | | `${{ github.token }}` | Token for the GitHub API, used to download `github:` dependencies. It avoids the rate limit for unauthenticated requests and lets you download assets from private repositories the token can read. |
 | `skip-system-deps` | | `false` | Skip installing the system packages (for self-hosted runners that already have them). |
 
-Every input is passed to the scripts through environment variables, so multi-line values (`scenario`, `plugins`, `dependencies`, `server-properties`) are passed as they are.
+Every input is passed to the scripts through environment variables, so multi-line values (`scenario`, `scenarios`, `scenario-file`, `tests`, `tags`, `plugins`, `dependencies`, `server-properties`) are passed as they are, and never interpolated directly into a shell command.
 
 ### Outputs
 
 | Output | Description |
 | --- | --- |
-| `result` | `passed`, `failed` or `error`, read from `result.json`. `error` when there is no `result.json`. |
+| `result` | `passed`, `failed` or `error`, read from `result.json`'s run status. `error` when there is no `result.json`. |
+| `tests-summary` | Test counts as JSON, read from `result.json`'s `summary`, for example `{"total":3,"passed":2,"failed":1,"error":0,"skipped":0}`. An empty object when `result.json` is missing. |
+| `failed-tests` | Comma-separated ids of the tests whose status is `failed` or `error`. |
 | `result-file` | Path to `result.json`. |
 | `artifact-name` | Name of the uploaded artifact. |
 | `out-dir` | Output directory. |
@@ -104,11 +120,11 @@ Every input is passed to the scripts through environment variables, so multi-lin
 `dependencies` is a YAML list. Each entry downloads one plugin jar into the server's `plugins` directory:
 
 ```yaml
-- uses: morinoparty/fukurou@v1
+- uses: morinoparty/fukurou@v2
   with:
     accept-eula: "true"
     minecraft-version: ${{ matrix.minecraft-version }}
-    scenario-file: game-test/scenarios/hello.yml
+    suite: game-test/fukurou.yml
     plugins-dir: build/libs
     dependencies: |
       - github: dmulloy2/ProtocolLib
@@ -126,15 +142,67 @@ Every input is passed to the scripts through environment variables, so multi-lin
 ### Output directory
 
 ```
-result.json                   # always written once the inputs are parsed
-screenshots/<player>/<name>.png
+result.json                                    # schemaVersion 2; written right after discovery, after every test, and at teardown
+tests/<test id>/screenshots/<player>/<name>.png
+tests/<test id>/screenshots/<player>/failure.png
 logs/harness.log
-logs/server.log
-logs/clients/<player>.log
-crash-reports/<player>/*.txt  # only when a client crashed
+logs/sessions/<n>/server.log                   # session n's server console record
+logs/sessions/<n>/clients/<player>.log         # the client's first launch in session n
+logs/sessions/<n>/clients/<player>.<k>.log     # after a relaunch (k >= 2)
+crash-reports/<player>/*.txt                   # only when a client crashed
 ```
 
 See [contract.md](contract.md) for the format of `result.json`.
+
+## Suite file
+
+A suite file (conventionally `fukurou.yml`) is what a group of tests shares. It is optional — `scenario-file` / `scenario` alone run without one, using fukurou's defaults below. Globs and paths inside it are relative to the suite file's own directory.
+
+```yaml
+$schema: https://raw.githubusercontent.com/morinoparty/fukurou/v2/schema/suite.v1.json
+scenarios:                 # ordered; each glob is sorted, and a file matched twice is used once
+  - scenarios/*.json
+players:                   # default for tests that omit "players"; the union of every test's players joins once
+  - { name: Alice, op: true }
+  - { name: Bob }
+isolation: reset           # default for tests that omit "isolation"
+arena: { size: 32, height: 24 }   # the region the reset fills with air; x,z centered on the origin, y from the ground up. false disables it
+gamemode: survival         # gamemode the reset sets participating players to
+spawn:                     # tp destination on reset (players not listed get a default slot: (0.5 + 2i, -60, -8.5))
+  Alice: "0.5 -60 -8.5 0 0"
+settle: 2                  # seconds to wait after the reset for clients to catch up on block updates
+fixtures:                  # named step sequences a test opts into with "use"
+  arena:
+    - { on: server, action: command, command: "fill -16 -60 -16 15 -50 15 minecraft:stone" }
+    - { action: wait, seconds: 2 }
+beforeEach: []              # steps that run before every test, ahead of its "use" fixtures
+```
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `scenarios` | `[]` | Ordered glob patterns of scenario files, relative to the suite file. |
+| `players` | `[]` | Default players for a test that does not declare its own. |
+| `isolation` | `reset` | Default isolation for a test that does not declare its own. |
+| `arena` | `{ size: 32, height: 24 }` | Region the reset fills with air (and re-lays a 4-block-thick ground under), centered on the world origin. `size * size * height` must be at most 32768 (the vanilla single-`fill` block limit). `false` disables the arena reset — use this if you bring your own world with `server-files`. |
+| `gamemode` | `survival` | Gamemode the reset sets every participating player to. |
+| `spawn` | `{}` | Map of player name to `"x y z"` or `"x y z yaw pitch"`, the reset's teleport destination. A player not listed gets slot `i` at `(0.5 + 2*i, -60, -8.5)`, where `i` is that player's position in the joined players list — stable across tests, so the same player always lands in the same place. |
+| `settle` | `2` | Seconds to wait after the reset, so clients receive the resulting block updates before the test's own steps start. |
+| `fixtures` | `{}` | Named, non-empty step sequences. A test lists the names it wants in `use:`, in order; they expand ahead of the test's own `steps`, after `beforeEach`. A fixture step aimed at a player the test does not declare is skipped for that test (`"player <name> is not in this test"`), so one fixture can serve tests with different player sets. Screenshot names must still be unique per player across `beforeEach` + the fixtures used + the test's own steps. |
+| `beforeEach` | `[]` | Steps that run before every test, ahead of any `use` fixtures. |
+
+## Test fields
+
+Every test is one scenario file (its id is the file name without the extension) or the inline `scenario` input (id `inline`). Besides `players` and `steps` (see the [scenario format](../README.md#scenario-format) in the README), a test can set:
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `name` | the test id | Display name in the viewer. |
+| `tags` | `[]` | Strings to filter on with `--tag` / the `tags` input. |
+| `isolation` | the suite's `isolation` (default `reset`) | `reset`: run in the shared server session after a harness reset. `fresh-server`: delete the world and restart the server and clients before running (`server/` only — installed clients are kept and just relaunched). |
+| `timeout` | `600` | Seconds checked between steps; exceeding it errors the test out (phase `timeout`). |
+| `versions` | `null` | Same syntax as `fukurou versions`, minus `latest` (for example `1.21.9-`, `1.21.6-1.21.11`, `1.21.11`). Evaluated against the release list fukurou already fetched at startup, so it costs no extra request. A version not included skips the test with `skipReason: "versions: <spec> does not include <version>"`. |
+| `use` | `[]` | Names of the suite's `fixtures` to expand before this test's own steps, in this order. |
+| `players` | the suite's `players` | Fully replaces the suite's players for this test when set (a subset is fine). A test with no players anywhere — no suite, and none of its own — is an error. |
 
 ## `morinoparty/fukurou/ui`
 
@@ -148,7 +216,7 @@ deploy:
   outputs:
     fukurou_url: ${{ steps.site.outputs.url }}
   steps:
-    - uses: morinoparty/fukurou/ui@v1
+    - uses: morinoparty/fukurou/ui@v2
       id: site
       with:
         s3-endpoint: ${{ vars.FUKUROU_S3_ENDPOINT }}
@@ -186,6 +254,8 @@ deploy:
 | `uploaded` | `true` when the site was published to S3-compatible storage. |
 | `status` | `passed` when every run passed, `failed` when any run failed or errored, `empty` when no runs were found. |
 | `summary` | Run counts as JSON, for example `{"total":7,"passed":6,"failed":1,"error":0}`. |
+| `tests-summary` | Test counts across every run (test x version) as JSON, for example `{"total":18,"passed":14,"failed":2,"error":0,"skipped":2}`. A "not run" cell (a test absent from a run, for example because a filter excluded it there) is not counted. |
+| `failed-tests` | `<test id>@<minecraft version>` of every cell whose status is `failed` or `error`, comma separated. |
 | `site-dir` | Local directory that holds the site. |
 
 ## Command line
@@ -195,15 +265,29 @@ The actions call the `fukurou` command. You can run it locally with `uvx --from 
 | Command | Description |
 | --- | --- |
 | `fukurou versions <spec> [--max-versions N]` | Print the versions a spec resolves to, as a JSON array. |
-| `fukurou validate (--scenario-file PATH \| --scenario TEXT)` | Validate a scenario. Exit code 0 when it is valid, 2 otherwise. |
-| `fukurou schema {scenario\|result}` | Print a JSON Schema. |
+| `fukurou list [selection] [--minecraft-version X]` | Print the selected test ids in run order, as a JSON array. With `--minecraft-version`, tests `versions:` would skip on it are reported (on stderr) too. |
+| `fukurou validate [selection]` | Check the suite and every selected test without starting anything: one valid line per test on stdout, problems on stderr. Exit 2 on any problem, or when the selection is empty. |
+| `fukurou schema {scenario\|suite\|result}` | Print a JSON Schema (`scenario` is schemaVersion 2, `suite` is v1, `result` is schemaVersion 2). |
 | `fukurou java --minecraft-version X [--plugins-dir DIR] [--plugins GLOBS]` | Print the Java major version to use for the server. |
-| `fukurou run --minecraft-version X (--scenario-file PATH \| --scenario TEXT) --accept-eula [options]` | Run a scenario. Exit code 0 when it passed, 1 when it failed or could not run, 2 for invalid input. |
+| `fukurou run --minecraft-version X [selection] --accept-eula [options]` | Run the selected tests in one server session. Exit 0 when every selected test passed or was skipped, 1 when any failed, errored, or the run could not proceed, 2 for invalid input. |
 
-`fukurou run` options:
+`[selection]` (shared by `list`, `validate` and `run`; at least one of the first four is required):
+
+| Option | Description |
+| --- | --- |
+| `--suite PATH` | Suite file (`fukurou.yml`); its `scenarios` globs are relative to it. |
+| `--scenarios GLOB` | Glob of scenario files relative to the cwd (repeatable; commas and newlines also separate). |
+| `--scenario-file PATH` | Scenario file, JSON or YAML (repeatable; newlines also separate). |
+| `--scenario TEXT` | Inline scenario text, JSON or YAML (test id `inline`). |
+| `--test ID_OR_GLOB` | Run only tests whose id matches (repeatable; commas and newlines also separate; combined with `--tag`, a test must match both). |
+| `--tag TAG` | Run only tests with one of these tags (repeatable; commas and newlines also separate). |
+| `--isolation {reset,fresh-server}` | Force this isolation for every test. |
+
+`fukurou run` also takes:
 
 | Option | Default | Description |
 | --- | --- | --- |
+| `--fail-fast` | off | Stop at the first `failed`/`error` test; the rest are recorded `skipped`. |
 | `--plugins-dir DIR` | current directory | Directory that contains the plugin jars. |
 | `--plugins GLOBS` | `*.jar` | Glob patterns, separated by newlines or commas. An empty string installs no plugins. |
 | `--dependencies YAML` | | Extra plugins to download. See [Dependencies](#dependencies). |
@@ -214,3 +298,26 @@ The actions call the `fukurou` command. You can run it locally with `uvx --from 
 | `--client-java PATH` | Mojang's runtime | Java for the clients. |
 | `--work-dir DIR` | `./.fukurou-work` | Working directory. |
 | `--out-dir DIR` | `./fukurou-out` | Output directory. |
+
+## Estimating `timeout-minutes`
+
+One server session costs a fixed startup (cold: about 2.5–3 minutes for the server plus each player's Quick Play join; warm caches: about 1 minute), then per test roughly 1 minute with `isolation: reset` (dominated by `settle` and the test's own waits) or an extra 1–4 minutes for `isolation: fresh-server` (a full server + client restart). A starting point:
+
+```
+timeout-minutes: 10 + (number of "reset" tests) + 4 * (number of "fresh-server" tests)
+```
+
+Tune it down once you have seen a few real runs — the job summary's per-test durations are the easiest way to do that.
+
+## Migrating from v1
+
+Bump the tag on all three actions (`@v1` → `@v2`); everything else in your workflow file can stay as it is, since `scenario` / `scenario-file` still work exactly as before (one test, id = the file's stem or `inline`, still gets a harness reset before it runs). What changes if you look closer:
+
+- **`result.json` is schemaVersion 2.** `steps`, `screenshots` and the reset moved from the root into `tests[]` (a run can now hold more than one test); logs moved into `sessions[]`; `players[].op` was removed (it is now per test, in `tests[].players[].op`). If anything of yours reads `result.json` directly, update it — see [contract.md](contract.md). The viewer does not read schemaVersion 1: artifacts from `@v1` show up as "unsupported" with a warning, so keep the whole pipeline (runner + ui) on one major version.
+- **Screenshots and logs moved.** `screenshots/<player>/<name>.png` is now `tests/<id>/screenshots/<player>/<name>.png`; `logs/server.log` / `logs/clients/<player>.log` are now `logs/sessions/<n>/server.log` / `logs/sessions/<n>/clients/<player>.log` (a session per `fresh-server` switch).
+- **Log matching is now windowed per test.** `wait_for_log` and `assert_no_log` only see lines written since the current test's reset. A stray error at server startup no longer fails your first test — but if you relied on seeing the whole session's log from a single-scenario run, scope your patterns to what happens during that test.
+- **New action inputs:** `suite`, `scenarios`, `tests`, `tags`, `isolation`, `fail-fast` — all optional, so a v1-style single-scenario invocation needs none of them.
+- **New outputs:** `tests-summary` and `failed-tests` on both `fukurou` and `fukurou/ui`, alongside the unchanged `result` / `status` / `summary`.
+- **New CLI commands:** `fukurou list` and multi-test `fukurou validate`; `fukurou schema` gained `suite`.
+
+`schema/scenario.v1.json` and `schema/result.v1.json` stay in this repository for reference if you are still on `@v1`.

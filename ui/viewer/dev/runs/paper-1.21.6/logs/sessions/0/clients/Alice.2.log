@@ -1,0 +1,11 @@
+[03:00:00] [Datafixer Bootstrap/INFO]: Building unoptimized datafixer
+[03:00:02] [Render thread/INFO]: Environment: Environment[sessionHost=https://sessionserver.mojang.com, name=PROD]
+[03:00:02] [Render thread/INFO]: Setting user: Alice
+[03:00:03] [Render thread/INFO]: Backend library: LWJGL version 3.3.3
+[03:00:03] [Render thread/WARN]: Failed to load render backend, falling back to software rendering (llvmpipe)
+[03:00:08] [Render thread/INFO]: Reloading ResourceManager: vanilla
+[03:00:14] [Render thread/INFO]: OpenAL initialized on device OpenAL Soft
+[03:00:16] [Render thread/INFO]: Created: 1024x512x4 minecraft:textures/atlas/blocks.png-atlas
+[03:00:20] [Render thread/INFO]: Connecting to 127.0.0.1, 25565
+[03:00:22] [Render thread/INFO]: [System] [CHAT] Alice joined the game
+[03:00:22] [Render thread/INFO]: Loaded 4 advancements

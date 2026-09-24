@@ -107,11 +107,11 @@ v1 の「参加時に `op: true` なら OP」は **テストごと** になる: 
      2. 参加しない（が参加済みの）プレイヤー: `tp <p> 0.5 -60 200.5`（駐機場所。エンティティの追跡範囲より遠いので画面に出ない）。
      3. アリーナ（`arena` が false でなければ）: `fill -16 -60 -16 15 -37 15 minecraft:air` → `fill -16 -61 -16 15 -61 15 minecraft:grass_block` → `fill -16 -63 -16 15 -62 15 minecraft:dirt` → `fill -16 -64 -16 15 -64 15 minecraft:bedrock` → `kill @e[type=!player]`。
      4. ワールド: `time set noon`, `weather clear`。
-     5. 参加プレイヤーの状態: `clear <p>`, `effect give <p> minecraft:instant_health 1 255 true`, `effect give <p> minecraft:saturation 1 255 true`, `effect clear <p>`, `experience set <p> 0 points`, `experience set <p> 0 levels`, `title <p> clear`, `spawnpoint <p> <spawn>`, そして `op <p>` / `deop <p>`。
+     5. 参加プレイヤーの状態: `clear <p>`, `effect clear <p>`, `effect give <p> minecraft:instant_health 1 10 true`, `effect give <p> minecraft:saturation 1 10 true`, `experience set <p> 0 points`, `experience set <p> 0 levels`, `title <p> clear`, `spawnpoint <p> <spawn>`, そして `op <p>` / `deop <p>`。（実装時の修正: `effect clear` は give より前に置く。saturation は瞬時効果ではないので、後に clear すると最初の tick より前に消える。amplifier 255 は instant_health で `4 << 255 == 0` になり回復しないので 10 にする）
      - **RCON の応答を検査する**（`ServerProcess.command` はエラーで例外を投げない）: 応答が `^(Unknown or incomplete command|Incorrect argument|Too many blocks|Cannot|That position is not loaded)` に一致すれば `reset.error` に記録し、テストは `error`（phase `reset`）。`kill` の `No entity was found` と `op`/`deop` の `Nothing changed` は無視。
      - クライアント側（参加プレイヤー）: `F3+d`（チャット HUD を消す）と F5 の正規化（`PlayerSession.perspective` にハーネスが送った F5 を数え、`(3 - n % 3) % 3` 回押して一人称に戻す。ベストエフォート）。
      - `settle` 秒待つ。
-   - **ログウィンドウ**: セッションのサーバーコンソールログと、参加クライアントの `latest.log` に `LogWindow.mark()`（バイトオフセットと行番号を記録）。`ScenarioRunner` はファイル全体ではなく `LogWindow.read()`（前回のオフセットから増分で読み、テスト内では蓄積）を使う。これが無いと 2 つ目の `/st` テストが 1 つ目の `issued server command` 行に即一致して偽の成功になる。テスト終了時に `line_range()` を `logRanges[<artifact 内のパス>]` に記録。
+   - **ログウィンドウ**: セッションのサーバーコンソールログと、参加クライアントの `latest.log` に、リセットの **前** に `LogWindow.mark()`（バイトオフセットと行番号を記録。`logRanges` はリセットの応答から始まる）、リセットの **後**（settle の後）に `LogWindow.skip()`（照合用のバッファだけを捨てる。`wait_for_log` / `assert_no_log` はリセット後の行だけを見るので、リセットの RCON の echo に一致しない）。`ScenarioRunner` はファイル全体ではなく `LogWindow.read()`（前回のオフセットから増分で読み、テスト内では蓄積）を使う。これが無いと 2 つ目の `/st` テストが 1 つ目の `issued server command` 行に即一致して偽の成功になる。テスト終了時に `line_range()` を `logRanges[<artifact 内のパス>]` に記録。
    - `beforeEach` → fixtures → `steps` を `ScenarioRunner.run_step` で実行（`screenshots_dir = out/tests/<id>/screenshots`）。最初に失敗したステップで `failed`、残りのステップは `skipped`。参加プレイヤーの `failure.png` を撮る。`--fail-fast` でなければスイートは続行。
    - **テスト中のインフラ失敗**: クライアントのプロセス死亡 → テストは `error`（phase `client`）、そのプレイヤーを再起動対象に。タイムアウト → `error`（phase `timeout`）。サーバー死亡（RCON 不通または `is_running()` false）→ `run.failure = {phase: "server", message}`、残りは `skipped`（`skipReason: "server died during <id>"`）、ループ終了。
    - **テストが終わるたびに `result.json` を書く**。
@@ -705,7 +705,7 @@ fixtures:
 | `fukurou.run.suite_run`（runner-core） | `SuiteRun(options).execute() -> int`（`cli._run` が呼ぶ） |
 | `fukurou.run.session`（runner-core） | `GameSession`: `start()`, `join_all()`, `relaunch(name)`, `reset(test)`, `restart_fresh()`, `stop()`, `collect_logs(index)` |
 | `fukurou.run.isolation`（runner-core） | `ResetCommand(command, ignore: tuple[str, ...])`, `reset_commands(test, joined, reset_spec)`, `default_slot(i)`, `PARKING_SPOT`, `ERROR_RESPONSE`（正規表現） |
-| `fukurou.runner.log_window`（runner-core） | `LogWindow(path)`: `mark()`, `read() -> str`, `line_range() -> LogRange | None` |
+| `fukurou.runner.log_window`（runner-core） | `LogWindow(path)`: `mark()`, `skip()`, `read() -> str`, `line_range() -> LogRange | None` |
 | `fukurou.result.recorder`（runner-core） | `RunRecorder`（`ResultRecorder` を改名。`register_tests(specs)`, `test(id) -> TestRecorder`, `add_session(...)`, `fail(phase, message)`, `status`, `build() -> ResultV2`, `write(path)`）, `TestRecorder`（`start()`, `set_reset(...)`, `step_passed/failed/skipped`, `add_screenshot`, `set_log_ranges`, `skip(reason)`, `fail(phase, message, step_index)`） |
 
 `ui/scripts/build_manifest.py` と `ui/viewer/src/contract.ts` は §5 の JSON だけを契約とし、Python の名前には依存しない。

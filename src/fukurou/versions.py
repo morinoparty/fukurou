@@ -5,6 +5,7 @@ Mojang のマニフェストでリリースの順序を取り、Paper に STABLE
 マニフェストの並び（リリースの新しい順）だけで前後関係を判断する。
 """
 
+from dataclasses import dataclass
 from typing import Callable
 
 from fukurou.errors import InvalidInputError
@@ -19,6 +20,57 @@ LATEST = "latest"
 
 class VersionError(InvalidInputError):
     """バージョン指定が不正、または条件に合うバージョンが見つからない場合に送出する。"""
+
+
+@dataclass(frozen=True)
+class VersionSpec:
+    """"latest" 以外のバージョン指定を分解したもの。
+
+    単一のバージョンは lower == upper、上限の無い範囲（"1.21.6-"）は upper が None になる。
+    """
+
+    lower: str
+    upper: str | None
+
+    @property
+    def is_single(self) -> bool:
+        return self.lower == self.upper
+
+
+def parse_spec(spec: str) -> VersionSpec:
+    """テストの versions: のような、通信せずに判定したい指定を構文だけ検証して分解する。
+
+    "latest" は Paper のチャンネル（通信）が無いと決まらないため受け付けない。
+    バージョンがリリースに存在するかは、リリース一覧を持つ spec_includes で確かめる。
+    """
+    spec = spec.strip()
+    if not spec:
+        raise VersionError("the version spec is empty")
+    if spec == LATEST:
+        raise VersionError(f"{LATEST!r} is not allowed here; use a version or a range such as 1.21.6-")
+    if "-" not in spec:
+        return VersionSpec(lower=spec, upper=spec)
+    lower, upper = (part.strip() for part in spec.split("-", 1))
+    if not lower:
+        raise VersionError("a version range needs a lower bound, such as 1.21.6-")
+    if "-" in upper:
+        raise VersionError(f"{spec!r} is not a version or a range such as 1.21.6-1.21.11")
+    return VersionSpec(lower=lower, upper=upper or None)
+
+
+def spec_includes(spec: str, version: str, releases: list[str]) -> bool:
+    """version が spec（"1.21.11" / "1.21.6-" / "1.21.6-1.21.11"）に含まれるかを返す。
+
+    releases は Mojang のマニフェストのリリース一覧（新しい順）。番号の大小ではなく並び順で判定する
+    ため、1.21.11 と 26.1 のように体系が変わっても正しく比べられる。
+    """
+    parsed = parse_spec(spec)
+    if parsed.is_single:
+        # 単一の指定は一致するかだけを見ればよく、リリース一覧に無くても判定できる
+        return version == parsed.lower
+    newest, oldest = range_indices(releases, parsed.lower, parsed.upper)
+    ensure_release(releases, version)
+    return newest <= releases.index(version) <= oldest
 
 
 def resolve_versions(spec: str, max_versions: int = DEFAULT_MAX_VERSIONS) -> list[str]:
@@ -116,17 +168,24 @@ def select_range(
     if not lower:
         raise VersionError("a version range needs a lower bound, such as 1.21.6-")
     ensure_supported(releases, lower)
+    newest, oldest = range_indices(releases, lower, upper)
+    candidates = releases[newest : oldest + 1]
+    selected = [v for v in candidates if v in paper_versions and channel_of(v) == STABLE_CHANNEL]
+    if not selected:
+        raise VersionError(f"no release between {lower} and {upper or LATEST} has a stable Paper build")
+    return list(reversed(selected))
+
+
+def range_indices(releases: list[str], lower: str, upper: str | None) -> tuple[int, int]:
+    """範囲の両端をマニフェストの添字（newest, oldest）に変換する。新しい順なので newest <= oldest になる。"""
+    ensure_release(releases, lower)
     if upper is not None:
         ensure_release(releases, upper)
     newest = releases.index(upper) if upper is not None else 0
     oldest = releases.index(lower)
     if newest > oldest:
         raise VersionError(f"{lower} is newer than {upper}")
-    candidates = releases[newest : oldest + 1]
-    selected = [v for v in candidates if v in paper_versions and channel_of(v) == STABLE_CHANNEL]
-    if not selected:
-        raise VersionError(f"no release between {lower} and {upper or LATEST} has a stable Paper build")
-    return list(reversed(selected))
+    return newest, oldest
 
 
 def ensure_release(releases: list[str], version: str) -> None:

@@ -1,0 +1,48 @@
+Starting minecraft server version 1.21.11
+Loading properties
+Default game type: SURVIVAL
+[ProtocolLib] Loading server plugin ProtocolLib v5.4.0
+[MineStamp] Loading server plugin MineStamp v1.4.0
+Preparing level "world"
+[ProtocolLib] Enabling ProtocolLib v5.4.0
+[MineStamp] Enabling MineStamp v1.4.0
+Done (3.2s)! For help, type "help"
+Starting remote control listener
+RCON running on 0.0.0.0:25575
+Alice joined the game
+Bob joined the game
+Rcon issued server command: /gamemode survival Alice
+Rcon issued server command: /tp Alice 0.5 -60 -8.5 0 0
+Rcon issued server command: /gamemode survival Bob
+Rcon issued server command: /tp Bob 0.5 -60 -8.5 0 0
+Rcon issued server command: /fill -16 -60 -16 15 -37 15 minecraft:air
+Rcon issued server command: /kill @e[type=!player]
+Rcon issued server command: /time set noon
+Rcon issued server command: /weather clear
+[Server] fukurou: next test
+Rcon issued server command: /fill 0 -60 0 0 -50 0 minecraft:stone
+Rcon issued server command: /fill 0 -60 8 0 -50 8 minecraft:stone
+Rcon issued server command: /tp Alice 0.5 -49 0.5 0 30
+Rcon issued server command: /tp Bob 0.5 -49 8.5 180 -15
+Alice issued server command: /st :thinking-face:
+[MineStamp] Alice sent stamp :thinking-face:
+Rcon issued server command: /gamemode survival Alice
+Rcon issued server command: /tp Alice 0.5 -60 -8.5 0 0
+Rcon issued server command: /gamemode survival Bob
+Rcon issued server command: /tp Bob 0.5 -60 -8.5 0 0
+Rcon issued server command: /fill -16 -60 -16 15 -37 15 minecraft:air
+Rcon issued server command: /kill @e[type=!player]
+Rcon issued server command: /time set noon
+Rcon issued server command: /weather clear
+[Server] fukurou: next test
+Rcon issued server command: /fill 0 -60 0 0 -50 0 minecraft:stone
+Rcon issued server command: /fill 0 -60 8 0 -50 8 minecraft:stone
+Rcon issued server command: /tp Alice 0.5 -49 0.5 0 30
+Rcon issued server command: /tp Bob 0.5 -49 8.5 180 -15
+[ProtocolLib] Internal exception occurred
+java.lang.IllegalStateException: Unable to find field entityId in PacketPlayOutSpawnEntity
+	at com.comphenix.protocol.reflect.FieldAccessException.fromFormat(FieldAccessException.java:49)
+Rcon issued server command: /gamemode survival Bob
+Rcon issued server command: /tp Bob 0.5 -60 -8.5 0 0
+Rcon issued server command: /fill -16 -60 -16 15 -37 15 minecraft:air
+Stopping server

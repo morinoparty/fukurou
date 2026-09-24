@@ -8,7 +8,6 @@ from typing import Any
 
 import yaml
 
-from fukurou.result.model import ScenarioInfo
 from fukurou.scenario.model import Scenario, ScenarioError, parse_scenario
 from fukurou.yaml_loader import load_yaml
 
@@ -19,7 +18,8 @@ INLINE_SOURCE = "inline"
 class ScenarioSource:
     """検証前のシナリオの生テキストと、その出どころ。
 
-    シナリオが不正でも result.json に名前とハッシュを残せるよう、検証とは分けて保持する。
+    name はテスト id の元（ファイル名の stem、インラインなら "inline"）。source と sha256 は
+    discovery が TestSpec に写して result.json に残す。
     """
 
     name: str
@@ -45,21 +45,17 @@ class ScenarioSource:
     def sha256(self) -> str:
         return hashlib.sha256(self.text.encode("utf-8")).hexdigest()
 
-    def info(self) -> ScenarioInfo:
-        """result.json の scenario 欄を作る。"""
-        return ScenarioInfo(name=self.name, source=self.source, sha256=self.sha256)
-
     def parse(self) -> Scenario:
         """テキストを解釈して検証し、Scenario を返す。"""
         return parse_scenario(parse_document(self.text))
 
 
-def parse_document(text: str) -> Any:
+def parse_document(text: str, kind: str = "scenario") -> Any:
     """JSON または YAML の文書を Python の値に変換する。
 
     JSON は YAML としても読めるが、タブでインデントした JSON は YAML では構文エラーになるため、
     先に JSON として読み、失敗したら YAML として読む。YAML の `on:` が真偽値にならないよう
-    YAML 1.2 相当のローダーを使う。
+    YAML 1.2 相当のローダーを使う。kind はエラーメッセージに出す文書の種類（scenario / suite）。
     """
     try:
         return json.loads(text)
@@ -68,7 +64,7 @@ def parse_document(text: str) -> Any:
     try:
         return load_yaml(text)
     except yaml.YAMLError as error:
-        raise ScenarioError(f"the scenario is neither valid JSON nor valid YAML: {error}") from error
+        raise ScenarioError(f"the {kind} is neither valid JSON nor valid YAML: {error}") from error
 
 
 def load_scenario(path: Path) -> Scenario:

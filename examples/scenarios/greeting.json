@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/morinoparty/fukurou/v2/schema/scenario.v2.json",
+  "tags": ["chat"],
+  "use": ["platform"],
+  "steps": [
+    { "on": "Alice", "action": "chat", "text": "hello" },
+    { "on": "server", "action": "wait_for_log", "pattern": "<Alice> hello", "timeout": 10 },
+    { "on": "Alice", "action": "screenshot", "name": "greeting" }
+  ]
+}

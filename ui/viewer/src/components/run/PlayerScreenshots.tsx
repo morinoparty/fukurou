@@ -1,9 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { css } from "styled-system/css";
 import { Button } from "../../chlorophyll";
-import type { ManifestRun, ResultV1 } from "../../contract";
+import type { ManifestRun, ResultV2, TestResult } from "../../contract";
 import { findLogIndex } from "../../lib/logs";
-import { playersOf, screenshotsOf } from "../../lib/runs";
+import { flatLogs, playersOf, screenshotsOf } from "../../lib/runs";
 import { buttonLink } from "../../styles";
 import { ScreenshotThumb } from "../ScreenshotThumb";
 
@@ -16,33 +16,48 @@ const grid = css({
 
 interface PlayerScreenshotsProps {
   run: ManifestRun;
-  result: ResultV1;
+  result: ResultV2;
+  test: TestResult;
 }
 
-/** プレイヤーごとにスクリーンショットを撮影順で並べ、そのプレイヤーのクライアントログへのリンクを添える */
-export function PlayerScreenshots({ run, result }: PlayerScreenshotsProps) {
-  const players = playersOf(result);
-  if (players.length === 0) return <p className={css({ color: "fg.muted" })}>No players were configured.</p>;
+/**
+ * 1 テストのスクリーンショットをプレイヤーごとに撮影順で並べ（failure は赤枠で最後）、
+ * そのプレイヤーのクライアントログ（このテストの行範囲付き）へのリンクを添える
+ */
+export function PlayerScreenshots({ run, result, test }: PlayerScreenshotsProps) {
+  const players = playersOf(test);
+  const logs = flatLogs(result);
+  if (players.length === 0) return <p className={css({ color: "fg.muted" })}>No players were configured for this test.</p>;
 
   return (
     <div className={css({ display: "flex", flexDirection: "column", gap: "6" })}>
       {players.map((player) => {
-        const info = result.players.find((candidate) => candidate.name === player);
-        const shots = screenshotsOf(result, player);
-        const clientLog = findLogIndex(result.logs, "client", player);
+        const info = test.players.find((candidate) => candidate.name === player);
+        const joined = result.players.find((candidate) => candidate.name === player)?.joined;
+        const shots = screenshotsOf(test, player);
+        // このテストのクライアントログ。logRanges にそのプレイヤーのログ（再起動後の <player>.2.log も含む）があればそれとその範囲、
+        // 無ければこのテストのセッションの最初のクライアントログ
+        const fromRanges = Object.entries(test.logRanges ?? {})
+          .map(([path, range]) => ({ index: logs.findIndex((log) => log.path === path), range }))
+          .find((entry) => entry.index >= 0 && logs[entry.index]?.kind === "client" && logs[entry.index]?.player === player);
+        const clientLog = fromRanges?.index ?? findLogIndex(logs, "client", player, test.session ?? undefined);
+        const range = fromRanges?.range;
         return (
           <div key={player}>
             <h3 className={heading}>
               {player}
-              {info && (
-                <span className={css({ fontSize: "xs", fontWeight: "normal", color: "fg.muted" })}>
-                  {info.op ? "op" : "not op"} · {info.joined ? "joined" : "did not join"}
-                </span>
-              )}
+              <span className={css({ fontSize: "xs", fontWeight: "normal", color: "fg.muted" })}>
+                {info ? (info.op ? "op" : "not op") : "not in this test"}
+                {joined === false && " · did not join"}
+              </span>
               {clientLog >= 0 && (
                 <Button asChild size="sm" intent="plain" className={buttonLink}>
-                  <Link to="/runs/$id/logs/$logIndex" params={{ id: run.id, logIndex: String(clientLog) }}>
-                    Client log
+                  <Link
+                    to="/runs/$runId/logs/$logIndex"
+                    params={{ runId: run.id, logIndex: String(clientLog) }}
+                    search={range ? { from: range.from, to: range.to } : {}}
+                  >
+                    Client log{range ? ` (lines ${range.from}–${range.to})` : ""}
                   </Link>
                 </Button>
               )}
@@ -50,7 +65,7 @@ export function PlayerScreenshots({ run, result }: PlayerScreenshotsProps) {
             {shots.length > 0 ? (
               <div className={grid}>
                 {shots.map((shot) => (
-                  <ScreenshotThumb key={`${shot.name}:${shot.path}`} run={run} shot={shot} />
+                  <ScreenshotThumb key={`${shot.name}:${shot.path}`} run={run} testId={test.id} shot={shot} />
                 ))}
               </div>
             ) : (

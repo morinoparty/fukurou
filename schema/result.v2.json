@@ -1,0 +1,1170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "result.json written by fukurou run (schemaVersion 2).",
+  "$defs": {
+    "ArenaInfo": {
+      "properties": {
+        "size": {
+          "title": "Size",
+          "type": "integer"
+        },
+        "height": {
+          "title": "Height",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "size",
+        "height"
+      ],
+      "title": "ArenaInfo",
+      "type": "object"
+    },
+    "CiInfo": {
+      "properties": {
+        "repository": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repository"
+        },
+        "sha": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sha"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ref"
+        },
+        "runId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runid"
+        },
+        "runAttempt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runattempt"
+        },
+        "serverUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Serverurl"
+        }
+      },
+      "title": "CiInfo",
+      "type": "object"
+    },
+    "FukurouInfo": {
+      "properties": {
+        "version": {
+          "title": "Version",
+          "type": "string"
+        },
+        "portablemc": {
+          "title": "Portablemc",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "portablemc"
+      ],
+      "title": "FukurouInfo",
+      "type": "object"
+    },
+    "JavaInfo": {
+      "properties": {
+        "server": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Server"
+        }
+      },
+      "title": "JavaInfo",
+      "type": "object"
+    },
+    "LogInfo": {
+      "properties": {
+        "kind": {
+          "enum": [
+            "harness",
+            "server",
+            "client",
+            "crash"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "player": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Player"
+        }
+      },
+      "required": [
+        "kind",
+        "path"
+      ],
+      "title": "LogInfo",
+      "type": "object"
+    },
+    "LogRange": {
+      "properties": {
+        "from": {
+          "title": "From",
+          "type": "integer"
+        },
+        "to": {
+          "title": "To",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
+      "title": "LogRange",
+      "type": "object"
+    },
+    "MinecraftInfo": {
+      "properties": {
+        "version": {
+          "title": "Version",
+          "type": "string"
+        },
+        "server": {
+          "const": "paper",
+          "default": "paper",
+          "title": "Server",
+          "type": "string"
+        },
+        "build": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Build"
+        },
+        "channel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Channel"
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "title": "MinecraftInfo",
+      "type": "object"
+    },
+    "PlayerInfo": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "joined": {
+          "default": false,
+          "title": "Joined",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "PlayerInfo",
+      "type": "object"
+    },
+    "PluginInfo": {
+      "properties": {
+        "file": {
+          "title": "File",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        },
+        "role": {
+          "enum": [
+            "under-test",
+            "dependency"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "classFileMajor": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Classfilemajor"
+        },
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Enabled"
+        }
+      },
+      "required": [
+        "file",
+        "sha256",
+        "role"
+      ],
+      "title": "PluginInfo",
+      "type": "object"
+    },
+    "ResetInfo": {
+      "properties": {
+        "durationMs": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Durationms"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        }
+      },
+      "title": "ResetInfo",
+      "type": "object"
+    },
+    "RunFailure": {
+      "properties": {
+        "phase": {
+          "enum": [
+            "setup",
+            "server-start",
+            "client-join",
+            "server",
+            "teardown",
+            "interrupted"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "phase",
+        "message"
+      ],
+      "title": "RunFailure",
+      "type": "object"
+    },
+    "ScreenshotInfo": {
+      "properties": {
+        "player": {
+          "title": "Player",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "width": {
+          "title": "Width",
+          "type": "integer"
+        },
+        "height": {
+          "title": "Height",
+          "type": "integer"
+        },
+        "stepIndex": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stepindex"
+        }
+      },
+      "required": [
+        "player",
+        "name",
+        "path",
+        "width",
+        "height"
+      ],
+      "title": "ScreenshotInfo",
+      "type": "object"
+    },
+    "SelectionInfo": {
+      "properties": {
+        "tests": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Tests",
+          "type": "array"
+        },
+        "tags": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "isolation": {
+          "anyOf": [
+            {
+              "enum": [
+                "reset",
+                "fresh-server"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Isolation"
+        },
+        "failFast": {
+          "default": false,
+          "title": "Failfast",
+          "type": "boolean"
+        }
+      },
+      "title": "SelectionInfo",
+      "type": "object"
+    },
+    "SessionInfo": {
+      "properties": {
+        "index": {
+          "title": "Index",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "initial",
+            "fresh-server"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "startedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Startedat"
+        },
+        "finishedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finishedat"
+        },
+        "players": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Players",
+          "type": "array"
+        },
+        "tests": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Tests",
+          "type": "array"
+        },
+        "logs": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/LogInfo"
+          },
+          "title": "Logs",
+          "type": "array"
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Failure"
+        }
+      },
+      "required": [
+        "index",
+        "kind"
+      ],
+      "title": "SessionInfo",
+      "type": "object"
+    },
+    "StepResult": {
+      "properties": {
+        "index": {
+          "title": "Index",
+          "type": "integer"
+        },
+        "phase": {
+          "default": "test",
+          "enum": [
+            "beforeEach",
+            "fixture",
+            "test"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "fixture": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fixture"
+        },
+        "on": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "On"
+        },
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "skipped"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "durationMs": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Durationms"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "screenshot": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Screenshot"
+        }
+      },
+      "required": [
+        "index",
+        "action",
+        "label",
+        "status"
+      ],
+      "title": "StepResult",
+      "type": "object"
+    },
+    "SuiteInfo": {
+      "properties": {
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sha256"
+        },
+        "isolation": {
+          "default": "reset",
+          "enum": [
+            "reset",
+            "fresh-server"
+          ],
+          "title": "Isolation",
+          "type": "string"
+        },
+        "settle": {
+          "default": 2,
+          "title": "Settle",
+          "type": "number"
+        },
+        "gamemode": {
+          "default": "survival",
+          "title": "Gamemode",
+          "type": "string"
+        },
+        "arena": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArenaInfo"
+            },
+            {
+              "const": false,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Arena"
+        }
+      },
+      "title": "SuiteInfo",
+      "type": "object"
+    },
+    "Summary": {
+      "properties": {
+        "total": {
+          "default": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "passed": {
+          "default": 0,
+          "title": "Passed",
+          "type": "integer"
+        },
+        "failed": {
+          "default": 0,
+          "title": "Failed",
+          "type": "integer"
+        },
+        "error": {
+          "default": 0,
+          "title": "Error",
+          "type": "integer"
+        },
+        "skipped": {
+          "default": 0,
+          "title": "Skipped",
+          "type": "integer"
+        }
+      },
+      "title": "Summary",
+      "type": "object"
+    },
+    "TestFailure": {
+      "properties": {
+        "phase": {
+          "enum": [
+            "reset",
+            "beforeEach",
+            "fixture",
+            "scenario",
+            "client",
+            "timeout"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "stepIndex": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stepindex"
+        }
+      },
+      "required": [
+        "phase",
+        "message"
+      ],
+      "title": "TestFailure",
+      "type": "object"
+    },
+    "TestPlayer": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "op": {
+          "default": false,
+          "title": "Op",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "TestPlayer",
+      "type": "object"
+    },
+    "TestResult": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "order": {
+          "title": "Order",
+          "type": "integer"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "tags": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "isolation": {
+          "default": "reset",
+          "enum": [
+            "reset",
+            "fresh-server"
+          ],
+          "title": "Isolation",
+          "type": "string"
+        },
+        "timeout": {
+          "default": 600,
+          "title": "Timeout",
+          "type": "number"
+        },
+        "versions": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Versions"
+        },
+        "session": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "error",
+            "skipped"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "skipReason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Skipreason"
+        },
+        "players": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TestPlayer"
+          },
+          "title": "Players",
+          "type": "array"
+        },
+        "reset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResetInfo"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "steps": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/StepResult"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TestFailure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "screenshots": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ScreenshotInfo"
+          },
+          "title": "Screenshots",
+          "type": "array"
+        },
+        "logRanges": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/LogRange"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Logranges"
+        },
+        "startedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Startedat"
+        },
+        "durationMs": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Durationms"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "order",
+        "source",
+        "sha256",
+        "status"
+      ],
+      "title": "TestResult",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schemaVersion": {
+      "const": 2,
+      "default": 2,
+      "title": "Schemaversion",
+      "type": "integer"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "passed",
+        "failed",
+        "error"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "fukurou": {
+      "$ref": "#/$defs/FukurouInfo"
+    },
+    "minecraft": {
+      "$ref": "#/$defs/MinecraftInfo"
+    },
+    "java": {
+      "$ref": "#/$defs/JavaInfo",
+      "default": {
+        "server": null
+      }
+    },
+    "plugins": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/PluginInfo"
+      },
+      "title": "Plugins",
+      "type": "array"
+    },
+    "suite": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SuiteInfo"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "selection": {
+      "$ref": "#/$defs/SelectionInfo",
+      "default": {
+        "tests": [],
+        "tags": [],
+        "isolation": null,
+        "failFast": false
+      }
+    },
+    "players": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/PlayerInfo"
+      },
+      "title": "Players",
+      "type": "array"
+    },
+    "summary": {
+      "$ref": "#/$defs/Summary",
+      "default": {
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "error": 0,
+        "skipped": 0
+      }
+    },
+    "sessions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SessionInfo"
+      },
+      "title": "Sessions",
+      "type": "array"
+    },
+    "tests": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/TestResult"
+      },
+      "title": "Tests",
+      "type": "array"
+    },
+    "failure": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RunFailure"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "logs": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/LogInfo"
+      },
+      "title": "Logs",
+      "type": "array"
+    },
+    "startedAt": {
+      "title": "Startedat",
+      "type": "string"
+    },
+    "finishedAt": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Finishedat"
+    },
+    "durationMs": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Durationms"
+    },
+    "ci": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CiInfo"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "id",
+    "status",
+    "fukurou",
+    "minecraft",
+    "startedAt"
+  ],
+  "title": "ResultV2",
+  "type": "object"
+}

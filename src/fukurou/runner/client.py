@@ -26,6 +26,10 @@ soundCategory_master:0.0
 RESOLUTION = "1280x720"
 
 
+class ClientDiedError(GameProcessError):
+    """クライアントのプロセスが終了していた場合に送出する。テストは error（phase client）になり、再起動の対象になる。"""
+
+
 class ClientProcess:
     """PortableMC で起動するバニラクライアント。Quick Play でテスト用サーバーへ直接参加する。"""
 
@@ -92,7 +96,7 @@ class ClientProcess:
     def check_alive(self) -> None:
         """クライアントが落ちていたら例外を送出する。"""
         if self.process is not None and self.process.poll() is not None:
-            raise GameProcessError(f"{self.username}: client exited with code {self.process.returncode}")
+            raise ClientDiedError(f"{self.username}: client exited with code {self.process.returncode}")
 
     def stop(self) -> None:
         if self.process is not None:

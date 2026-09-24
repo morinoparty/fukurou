@@ -1,0 +1,76 @@
+[03:00:00] [ServerMain/INFO]: Environment: Environment[sessionHost=https://sessionserver.mojang.com, name=PROD]
+[03:00:00] [ServerMain/INFO]: Loaded 1370 recipes
+[03:00:01] [Server thread/INFO]: Starting minecraft server version 1.21.10
+[03:00:01] [Server thread/INFO]: This server is running Paper version 1.21.10-60-main@abcdef0 (Git: abcdef0)
+[03:00:02] [Server thread/WARN]: **** SERVER IS RUNNING IN OFFLINE/INSECURE MODE!
+[03:00:02] [Server thread/WARN]: The server will make no attempt to authenticate usernames.
+[03:00:03] [Server thread/INFO]: [ProtocolLib] Loading server plugin ProtocolLib v5.4.0
+[03:00:03] [Server thread/INFO]: [MineStamp] Loading server plugin MineStamp v1.4.0
+[03:00:04] [Server thread/INFO]: Preparing level "world"
+[03:00:05] [Server thread/INFO]: Preparing spawn area: 0%
+[03:00:06] [Server thread/INFO]: Preparing spawn area: 9%
+[03:00:07] [Server thread/INFO]: Preparing spawn area: 18%
+[03:00:08] [Server thread/INFO]: Preparing spawn area: 27%
+[03:00:09] [Server thread/INFO]: Preparing spawn area: 36%
+[03:00:10] [Server thread/INFO]: Preparing spawn area: 45%
+[03:00:11] [Server thread/INFO]: Preparing spawn area: 54%
+[03:00:12] [Server thread/INFO]: Preparing spawn area: 63%
+[03:00:13] [Server thread/INFO]: Preparing spawn area: 72%
+[03:00:14] [Server thread/INFO]: Preparing spawn area: 81%
+[03:00:15] [Server thread/INFO]: Preparing spawn area: 90%
+[03:00:16] [Server thread/INFO]: Preparing spawn area: 99%
+[03:00:18] [Server thread/INFO]: Time elapsed: 14032 ms
+[03:00:18] [Server thread/INFO]: [ProtocolLib] Enabling ProtocolLib v5.4.0
+[03:00:18] [Server thread/INFO]: [MineStamp] Enabling MineStamp v1.4.0
+[03:00:18] [Server thread/INFO]: [MineStamp] Loaded 42 stamps from storage
+[03:00:19] [Server thread/INFO]: Done (19.512s)! For help, type "help"
+[03:00:19] [Server thread/INFO]: RCON running on 0.0.0.0:25575
+[03:00:43] [User Authenticator #1/INFO]: UUID of player Alice is 00000000-0000-0000-0000-000000000000
+[03:00:43] [Server thread/INFO]: Alice[/127.0.0.1:50000] logged in with entity id 123 at ([world]0.5, -60.0, 0.5)
+[03:00:43] [Server thread/INFO]: Alice joined the game
+[03:01:08] [User Authenticator #1/INFO]: UUID of player Bob is 00000000-0000-0000-0000-000000000000
+[03:01:08] [Server thread/INFO]: Bob[/127.0.0.1:50000] logged in with entity id 123 at ([world]0.5, -60.0, 0.5)
+[03:01:08] [Server thread/INFO]: Bob joined the game
+[03:01:08] [Server thread/INFO]: [Rcon: Set Alice's game mode to Survival Mode]
+[03:01:08] [Server thread/INFO]: [Rcon: Teleported Alice to 0.5, -60.0, -8.5]
+[03:01:08] [Server thread/INFO]: [Rcon: Set Bob's game mode to Survival Mode]
+[03:01:08] [Server thread/INFO]: [Rcon: Teleported Bob to 0.5, -60.0, -8.5]
+[03:01:08] [Server thread/INFO]: [Rcon: Successfully filled 24576 blocks]
+[03:01:09] [Server thread/INFO]: [Rcon: Successfully filled 1024 blocks]
+[03:01:09] [Server thread/INFO]: [Rcon: Successfully filled 2048 blocks]
+[03:01:09] [Server thread/INFO]: [Rcon: Set the time to 6000]
+[03:01:09] [Server thread/INFO]: [Rcon: Set the weather to clear]
+[03:01:10] [Server thread/INFO]: [Rcon: Cleared the inventory of Alice]
+[03:01:10] [Server thread/INFO]: [Rcon: Set Alice's experience to 0 points]
+[03:01:10] [Server thread/INFO]: [Rcon: Cleared the inventory of Bob]
+[03:01:10] [Server thread/INFO]: [Rcon: Set Bob's experience to 0 points]
+[03:01:13] [Server thread/INFO]: [Rcon: fill ok]
+[03:01:14] [Server thread/INFO]: [Rcon: fill ok]
+[03:01:15] [Server thread/INFO]: [Rcon: tp ok]
+[03:01:16] [Server thread/INFO]: [Rcon: tp ok]
+[03:01:22] [Server thread/INFO]: Alice issued server command: /st :thinking-face:
+[03:01:22] [Server thread/INFO]: [MineStamp] Alice sent stamp :thinking-face:
+[03:01:29] [Server thread/INFO]: [Rcon: Set Alice's game mode to Survival Mode]
+[03:01:29] [Server thread/INFO]: [Rcon: Teleported Alice to 0.5, -60.0, -8.5]
+[03:01:29] [Server thread/INFO]: [Rcon: Set Bob's game mode to Survival Mode]
+[03:01:29] [Server thread/INFO]: [Rcon: Teleported Bob to 0.5, -60.0, -8.5]
+[03:01:29] [Server thread/INFO]: [Rcon: Successfully filled 24576 blocks]
+[03:01:30] [Server thread/INFO]: [Rcon: Successfully filled 1024 blocks]
+[03:01:30] [Server thread/INFO]: [Rcon: Successfully filled 2048 blocks]
+[03:01:30] [Server thread/INFO]: [Rcon: Set the time to 6000]
+[03:01:30] [Server thread/INFO]: [Rcon: Set the weather to clear]
+[03:01:31] [Server thread/INFO]: [Rcon: Cleared the inventory of Alice]
+[03:01:31] [Server thread/INFO]: [Rcon: Set Alice's experience to 0 points]
+[03:01:31] [Server thread/INFO]: [Rcon: Cleared the inventory of Bob]
+[03:01:31] [Server thread/INFO]: [Rcon: Set Bob's experience to 0 points]
+[03:01:34] [Server thread/INFO]: [Rcon: fill ok]
+[03:01:35] [Server thread/INFO]: [Rcon: fill ok]
+[03:01:36] [Server thread/INFO]: [Rcon: tp ok]
+[03:01:37] [Server thread/INFO]: [Rcon: tp ok]
+[03:01:43] [Server thread/INFO]: Alice issued server command: /st :sleeping-face:
+[03:01:43] [Server thread/INFO]: [MineStamp] Alice sent stamp :sleeping-face:
+[03:01:44] [Server thread/ERROR]: Encountered an unexpected exception
+java.lang.OutOfMemoryError: Java heap space
+	at dev.nikomaru.minestamp.render.StampRenderer.render(StampRenderer.java:88)
+[03:01:45] [Server thread/ERROR]: Exception while executing RCON command
+java.net.SocketException: Connection reset

@@ -1,6 +1,7 @@
 import { memo, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { css } from "styled-system/css";
 import { Button } from "../../chlorophyll";
+import type { LogRange } from "../../contract";
 import type { LogLevel, LogLine } from "../../lib/logs";
 import { panelStyle } from "../../styles";
 
@@ -10,6 +11,8 @@ const PAGE = 1000;
 const COMPACT_PAGE = 200;
 /** 「全部表示」を出す上限。これより多いと一度に描くと固まるので、ページ送りと絞り込みに任せる */
 const SHOW_ALL_LIMIT = 20000;
+/** 指定の行へスクロールするとき、その行の上に残しておく行数（前後の文脈が見えるように） */
+const CONTEXT_LINES = 40;
 
 const frameStyle = css.raw({
   fontFamily: "mono",
@@ -42,7 +45,7 @@ const LEVEL_ROW: Record<LogLevel, string> = {
   plain: css(rowStyle, { bg: "bg.panel", color: "fg" }),
 };
 
-const numberCell = css({
+const numberCellStyle = css.raw({
   px: "2",
   textAlign: "end",
   color: "fg.subtle",
@@ -52,6 +55,14 @@ const numberCell = css({
   position: "sticky",
   left: "0",
   bg: "inherit",
+});
+const numberCell = css(numberCellStyle);
+// テストの行範囲（logRanges）に入る行。error / warn の地色はそのまま残し、行番号の列に太い緑の線と色を付けて範囲を示す。
+// 行そのものの inset box-shadow は sticky な行番号の地色の下に隠れるので、行番号の列に付ける
+const rangeNumberCell = css(numberCellStyle, {
+  color: "mori.fg",
+  fontWeight: "semibold",
+  boxShadow: "inset 4px 0 0 0 {colors.mori.solid}",
 });
 const textNoWrap = css({ pr: "3", whiteSpace: "pre" });
 const textWrap = css({ pr: "3", whiteSpace: "pre-wrap", wordBreak: "break-all" });
@@ -115,17 +126,47 @@ interface LogLinesProps {
   query: string;
   wrap: boolean;
   compact: boolean;
+  /** 強調する行番号の範囲（テストの logRanges）。両端含む */
+  highlight?: LogRange | null;
+  /** 最初にこの行番号（以上の最初の行）が見えるところまでスクロールする */
+  scrollTo?: number | null;
+}
+
+/** lines の中で number >= target になる最初の添字。無ければ -1 */
+function indexOfLine(lines: LogLine[], target: number): number {
+  return lines.findIndex((line) => line.number >= target);
 }
 
 /**
  * 行番号付きのログ本文。
  * 全行を一度に描くと数万行のログで固まるため、[start, end) の範囲だけを描き、前後は「もっと表示」で広げる。
+ * scrollTo があれば、その行が最初の描画範囲に入るようにし、描画後に枠をその行までスクロールする
  */
-export function LogLines({ lines, totalLines, query, wrap, compact }: LogLinesProps) {
+export function LogLines({ lines, totalLines, query, wrap, compact, highlight = null, scrollTo = null }: LogLinesProps) {
   const page = compact ? COMPACT_PAGE : PAGE;
-  const [range, setRange] = useState(() => ({ start: 0, end: Math.min(lines.length, page) }));
+  // 最初に見せたい行（scrollTo 以上の最初の行）。無ければ先頭から
+  const targetIndex = scrollTo === null ? -1 : indexOfLine(lines, scrollTo);
+  const [range, setRange] = useState(() => {
+    const start = targetIndex < 0 ? 0 : Math.max(0, targetIndex - CONTEXT_LINES);
+    return { start, end: Math.min(lines.length, start + page) };
+  });
   const frameRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  // 最初の描画で一度だけ scrollTo の行まで枠を動かす（絞り込みの変更では key で作り直されるので、そのたびに行う）
+  const scrolledRef = useRef(false);
+  useLayoutEffect(() => {
+    if (scrolledRef.current || targetIndex < 0) return;
+    scrolledRef.current = true;
+    const frame = frameRef.current;
+    const bodyElement = bodyRef.current;
+    const target = lines[targetIndex];
+    if (!frame || !bodyElement || !target) return;
+    const row = bodyElement.querySelector<HTMLElement>(`[data-line="${target.number}"]`);
+    if (!row) return;
+    // scrollIntoView はページ全体も動かしてしまうので、枠の scrollTop だけを変える。行の少し上（2 行分）に余白を残す
+    const offset = row.getBoundingClientRect().top - frame.getBoundingClientRect().top + frame.scrollTop;
+    frame.scrollTop = Math.max(0, offset - row.offsetHeight * 2);
+  }, [lines, targetIndex]);
   // スクロールのたびに更新する表示位置。折り返しの切り替えで使う
   const anchorRef = useRef<ScrollAnchor | null>(null);
   // ボタン操作の後で枠をどこへスクロールするか（描画し終えてから動かす）
@@ -197,7 +238,13 @@ export function LogLines({ lines, totalLines, query, wrap, compact }: LogLinesPr
       )}
       <div ref={bodyRef} className={wrap ? bodyWrap : body} role="log" aria-label="Log lines">
         {shown.map((line) => (
-          <Row key={line.number} line={line} query={query} wrap={wrap} />
+          <Row
+            key={line.number}
+            line={line}
+            query={query}
+            wrap={wrap}
+            inRange={highlight !== null && line.number >= highlight.from && line.number <= highlight.to}
+          />
         ))}
       </div>
       {remaining > 0 && (
@@ -233,13 +280,15 @@ interface RowProps {
   line: LogLine;
   query: string;
   wrap: boolean;
+  /** テストの行範囲に入っているか */
+  inRange: boolean;
 }
 
 /** 1行分。ページ送りで行が増えても既存の行は描き直さないよう memo にする */
-const Row = memo(function Row({ line, query, wrap }: RowProps) {
+const Row = memo(function Row({ line, query, wrap, inRange }: RowProps) {
   return (
-    <div className={LEVEL_ROW[line.level]} data-level={line.level}>
-      <span className={numberCell} aria-hidden="true">
+    <div className={LEVEL_ROW[line.level]} data-level={line.level} data-line={line.number} data-in-range={inRange || undefined}>
+      <span className={inRange ? rangeNumberCell : numberCell} aria-hidden="true">
         {line.number}
       </span>
       <span className={wrap ? textWrap : textNoWrap}>{highlight(line.text, query)}</span>

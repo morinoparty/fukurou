@@ -1,1 +1,6 @@
-[fukurou] starting
+[fukurou] discovered 4 tests (suite game-test/fukurou.yml)
+[fukurou] stamp-legacy-format: skipped (versions: 1.21.6-1.21.10 does not include 1.21.11)
+[fukurou] session 0: joining Alice, Bob
+[fukurou] stamp-thinking-face: passed
+[fukurou] stamp-sleeping-face: failed (fixture arena)
+[fukurou] stamp-reload: error (reset)

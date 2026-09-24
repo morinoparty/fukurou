@@ -1,16 +1,32 @@
-"""シナリオ全体（参加するプレイヤーとステップ列）のモデルと読み込み処理。"""
+"""シナリオ（= 1 テスト。参加するプレイヤー・ステップ列・メタデータ）のモデルと読み込み処理。"""
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Discriminator,
+    Field,
+    PositiveFloat,
+    Tag,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
-from fukurou.scenario.common import SERVER_TARGET, PlayerName, Wait
+from fukurou.scenario.common import SERVER_TARGET, NonEmptyStr, PlayerName, Wait
 from fukurou.scenario.player_actions import AnyPlayerAction, PlayerAction, Screenshot
 from fukurou.scenario.server_actions import AnyServerAction
-
+from fukurou.versions import VersionError, parse_spec
 
 # 失敗時に各プレイヤーの画面を保存するときのスクリーンショット名
 FAILURE_SCREENSHOT = "failure"
+# テストの既定のソフトな期限（秒）。ステップの合間に確認する
+DEFAULT_TIMEOUT = 600.0
+# reset: 共有セッションでハーネスのリセット後に実行 / fresh-server: サーバーとクライアントを起動し直して実行
+Isolation = Literal["reset", "fresh-server"]
+# テスト id・fixture 名など、artifact のパスやビューアの URL にそのまま使う名前の規則
+SafeName = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")]
 
 
 class ScenarioError(ValueError):
@@ -18,7 +34,7 @@ class ScenarioError(ValueError):
 
 
 class PlayerSpec(BaseModel):
-    """シナリオに参加するプレイヤー。起動順に参加し、op が true なら参加後に OP にする。"""
+    """テストに参加するプレイヤー。op が true ならそのテストの前のリセットで OP にする（false なら deop）。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -42,34 +58,76 @@ Step = Annotated[
 
 
 class Scenario(BaseModel):
-    """シナリオ全体。players に宣言したプレイヤーだけが steps の on に書ける。"""
+    """1 つのテスト。v1 の players + steps に、スイートでの実行を制御するメタデータを加えたもの。
+
+    players を省略した場合はスイートの players を使う。ステップの on がプレイヤーを指しているかの
+    検証は、players が決まるスイートの展開時（discovery）に行う。
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     # エディターの補完用に JSON Schema の URL を書けるようにする（実行には使わない）
     schema_url: str | None = Field(default=None, alias="$schema")
-    players: Annotated[list[PlayerSpec], Field(min_length=1)]
+    # 表示名。省略時はテスト id（ファイル名の stem）を使う
+    name: NonEmptyStr | None = None
+    # --tag で絞り込むための文字列
+    tags: list[NonEmptyStr] = Field(default_factory=list)
+    # 省略時はスイートの isolation（既定 reset）
+    isolation: Isolation | None = None
+    timeout: PositiveFloat = DEFAULT_TIMEOUT
+    # このテストを実行する Minecraft バージョン（"1.21.9-" など）。含まれないバージョンでは skipped
+    versions: NonEmptyStr | None = None
+    # ステップの前に展開するスイートの fixtures の名前（この順に展開する）
+    use: list[SafeName] = Field(default_factory=list)
+    players: Annotated[list[PlayerSpec], Field(min_length=1)] | None = None
     steps: Annotated[list[Step], Field(min_length=1)]
+
+    @field_validator("versions")
+    @classmethod
+    def _check_versions(cls, versions: str | None) -> str | None:
+        # latest は Paper への通信が要るので、読み込み時点で構文ごと弾く
+        if versions is not None:
+            try:
+                parse_spec(versions)
+            except VersionError as error:
+                raise ValueError(str(error)) from error
+        return versions
 
     @model_validator(mode="after")
     def _check_references(self) -> "Scenario":
-        names = [player.name for player in self.players]
-        if len(set(names)) != len(names):
-            raise ValueError("player names must be unique")
-        if SERVER_TARGET in names:
-            raise ValueError(f"{SERVER_TARGET!r} is reserved and cannot be a player name")
-        for index, step in enumerate(self.steps):
-            if isinstance(step, PlayerAction) and step.on not in names:
-                raise ValueError(f"step {index}: player {step.on!r} is not declared in players")
-        # スクリーンショットはプレイヤーごとのディレクトリに保存するため、同じプレイヤー内で重複を弾く
-        shots = [(step.on, step.name) for step in self.steps if isinstance(step, Screenshot)]
-        duplicates = sorted({f"{on}/{name}" for on, name in shots if shots.count((on, name)) > 1})
-        if duplicates:
-            raise ValueError(f"duplicate screenshot names: {', '.join(duplicates)}")
-        # 失敗時の画面は "failure" という名前で保存するため、シナリオでは使えないようにする
-        if any(name == FAILURE_SCREENSHOT for _, name in shots):
-            raise ValueError(f"screenshot name {FAILURE_SCREENSHOT!r} is reserved for the failure screenshot")
+        if self.players is not None:
+            check_players(self.players)
+            check_step_targets(self.steps, {player.name for player in self.players})
+        check_screenshots(self.steps)
         return self
+
+
+def check_players(players: list[PlayerSpec]) -> None:
+    """プレイヤー名の重複と予約語を弾く。スイートの players でも同じ規則を使う。"""
+    names = [player.name for player in players]
+    if len(set(names)) != len(names):
+        raise ValueError("player names must be unique")
+    if SERVER_TARGET in names:
+        raise ValueError(f"{SERVER_TARGET!r} is reserved and cannot be a player name")
+
+
+def check_step_targets(steps: list[Any], names: set[str]) -> None:
+    """プレイヤー向けのステップが、宣言されたプレイヤーだけを対象にしているかを確かめる。"""
+    for index, step in enumerate(steps):
+        if isinstance(step, PlayerAction) and step.on not in names:
+            raise ValueError(f"step {index}: player {step.on!r} is not declared in players")
+
+
+def check_screenshots(steps: list[Any]) -> None:
+    """スクリーンショット名の重複と、失敗時の画面に予約した名前の使用を弾く。"""
+    # スクリーンショットはプレイヤーごとのディレクトリに保存するため、同じプレイヤー内で重複を弾く
+    shots = [(step.on, step.name) for step in steps if isinstance(step, Screenshot)]
+    duplicates = sorted({f"{on}/{name}" for on, name in shots if shots.count((on, name)) > 1})
+    if duplicates:
+        raise ValueError(f"duplicate screenshot names: {', '.join(duplicates)}")
+    # 失敗時の画面は "failure" という名前で保存するため、シナリオでは使えないようにする
+    if any(name == FAILURE_SCREENSHOT for _, name in shots):
+        raise ValueError(f"screenshot name {FAILURE_SCREENSHOT!r} is reserved for the failure screenshot")
 
 
 def parse_scenario(data: Any) -> Scenario:

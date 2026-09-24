@@ -1,33 +1,37 @@
 # fukurou viewer
 
-The static page that shows fukurou results: an overview of every Minecraft version × player with screenshots, a detail page per run, a side-by-side comparison of one screenshot across versions, and a log viewer for the server, harness, client and crash logs of a run.
+The static page that shows fukurou results: a tests × Minecraft versions status grid, a page per test with the screenshots of every version, a side-by-side comparison of one screenshot across versions, a page per run (version) with its sessions and tests, a page per test run with the steps grouped by phase, and a log viewer for the harness, server, client and crash logs of a run that can highlight the lines of one test.
 
 It is a Vite + React + TypeScript single-page app using TanStack Router with hash routing, styled with [Panda CSS](https://panda-css.com) and morinoparty's design system [Chlorophyll](https://github.com/morinoparty/Chlorophyll) (`@morinoparty/chlorophyll-react`). The build output is committed to [`ui/dist`](../dist) so that the `morinoparty/fukurou/ui` action can copy it without installing Node.js.
 
 ## How it finds the data
 
-The viewer reads the site manifest described in [`docs/contract.md`](../../docs/contract.md):
+The viewer reads the site manifest (schemaVersion 2) described in [`docs/contract.md`](../../docs/contract.md) and [`docs/design/v2-multi-test.md`](../../docs/design/v2-multi-test.md) §5:
 
 1. `window.__FUKUROU_MANIFEST__`, set by `manifest.js` (a classic `<script>` next to `index.html`, loaded before the app). This is what makes the page work when opened from `file://`.
 2. Otherwise `fetch("./manifest.json")`.
 3. If neither exists, a short explanation is shown instead.
 
-Every screenshot and log path in a `result.json` is relative to the artifact root; the viewer resolves it as `run.base + path`. Runs whose `result` is `null` or whose `schemaVersion` is newer than 1 are shown as error / unsupported cards.
+Every screenshot and log path in a `result.json` is relative to the artifact root; the viewer resolves it as `run.base + path`. Runs whose `result` is `null` or whose `schemaVersion` is not 2 are shown as error / unsupported cards (with raw links to the logs listed in the manifest run's optional `logs`, such as the `harness.log` of a run that never wrote `result.json`) and appear in the grid as a column without cells (there is no adapter for v1 results; use fukurou/ui v1 for v1 artifacts).
 
-Routes (hash based, so the site works from any sub-path and from `file://`):
+Routes (hash based, so the site works from any sub-path and from `file://`). Ids in the URL are the `SAFE_ID`-validated run and test ids from the manifest:
 
 | Route | Page |
 | --- | --- |
-| `#/` | Overview: summary counts, CI link, warnings, runs × players grid |
-| `#/runs/<id>` | One run: failure, screenshots (with each player's client log), steps, logs, environment, plugins |
-| `#/runs/<id>/logs/<index>` | Log viewer for `result.logs[<index>]` |
-| `#/compare/<shot>` | The screenshot named `<shot>` for every run, per player |
+| `#/` | Overview: "N tests × M versions" summary, warnings, the status grid (rows = tests in suite order with tags and "passed/total", columns = versions with the run's status, cells = the test's status in that version, or "not run" when the run does not contain it). **Failures first** re-sorts the rows (remembered in `localStorage`) |
+| `#/tests/<testId>` | One test: rows = versions, columns = the test's players, each cell the player's last screenshot (failure in red); links to compare pages for each screenshot name |
+| `#/tests/<testId>/compare/<shot>` | The screenshot named `<shot>` of that test for every version, per player |
+| `#/runs/<runId>` | One run (version): infrastructure failure, tests table, sessions with their logs, logs, environment, plugins. Prev/next move between versions |
+| `#/runs/<runId>/tests/<testId>` | One test in one version: failure, facts, screenshots per player (with a client-log link scoped to the test), steps grouped by phase (harness reset, `beforeEach`, fixtures collapsed unless they failed, then the test's own steps), and links into the log viewer for every `logRanges` entry. Prev/next move to the same test in the neighbouring versions |
+| `#/runs/<runId>/logs/<index>?from=&to=` | Log viewer for the run's flattened logs (`[...result.logs, ...sessions.flatMap(s => s.logs)]`); `from` / `to` highlight a line range and scroll to it |
 
 ## Log viewer
 
-`#/runs/<id>/logs/<index>` shows one entry of the run's `result.logs` (harness, server, each client, crash reports), loaded with `fetch(run.base + path)`. The run page links to it from the header (server log) and from each player's screenshots (client log), and its Logs section embeds a smaller copy of the same viewer with a button per log.
+`#/runs/<id>/logs/<index>` shows one of the run's logs (harness, then per session the server log, each client's log and crash reports), loaded with `fetch(run.base + path)`. The run page links to it from the header (server log), from each session, and its Logs section embeds a smaller copy of the same viewer with a button per log. The test-run page links to it with `?from=&to=` from the test's `logRanges` and from each player's client-log button.
 
 - Line numbers are those of the file, also while filtering.
+- With `?from=&to=` the lines of that range get a green line-number gutter and the frame scrolls so the first line of the range is near the top. **Only lines a–b** in the toolbar restricts the view to the range (off by default so the surrounding context stays visible).
+- When a run has several sessions (`fresh-server` tests), the tab labels carry the session (`Server · S1`); a relaunched client's `<player>.2.log` gets a `#2` suffix, and downloads are named `<run id>-s<session>-[<player>-]<file>`.
 - `ERROR` / `WARN` lines are highlighted (Log4j's `[time] [thread/LEVEL]:` and Python's `date time LEVEL` headers). Lines without a header, such as stack traces, take the level of the header above them, so **Errors only** keeps the whole exception. Crash reports have no such headers; there the exception, `Caused by:` and stack-frame lines count as errors. Client `[CHAT]` lines get a subtle tint.
 - The filter box is a case-insensitive substring match; matches are marked. **Wrap** toggles line wrapping and keeps the line you were reading (or the end of the log) in view. **Raw** opens the file, **Download** saves it as `<run id>-[<player>-]<file>`.
 - The log tabs keep their full labels and scroll sideways on narrow screens; a crash report is labelled `Crash · <player>` (numbered when a player has several) with its path shown on hover and under the heading.
@@ -66,7 +70,7 @@ pnpm install
 pnpm dev        # http://localhost:5173 with sample data from dev/
 ```
 
-`pnpm dev` serves [`dev/`](dev) as the public directory, so `dev/manifest.js` and the small PNGs under `dev/runs/` act as a fake site. Edit `dev/manifest.js` to try other shapes of data. The `dev/` directory is not part of the build.
+`pnpm dev` serves [`dev/`](dev) as the public directory, so `dev/manifest.js`, the logs and the small PNGs under `dev/runs/` act as a fake site. [`dev/generate.py`](dev/generate.py) (standard library only) writes all of it, with logs whose line numbers match the `logRanges`; it covers passed / failed / error / skipped tests, a test that is not run in one version, a `fresh-server` second session with a relaunched client and a crash report, a run whose server died, a v1 artifact and an artifact without `result.json`. Edit the script and run `python3 dev/generate.py` to try other shapes of data. The `dev/` directory is not part of the build.
 
 To preview a real report, build a site with `ui/scripts/build_manifest.py` and open its `index.html` directly, or serve it with any static file server.
 
@@ -88,7 +92,7 @@ Commit the updated `ui/dist` together with the source change. The build:
 - inlines the CSS into that script (Vite injects it at startup), so there is no separate stylesheet to load;
 - is deterministic: two builds, also from different checkout paths, produce byte-identical files. CI rebuilds and fails if the committed `ui/dist` differs.
 
-The bundle is about 534 kB (154 kB gzip), of which about 112 kB is CSS. Most of the growth over the Tailwind version is Ark UI's tooltip machinery (zag + floating-ui) behind Chlorophyll's `Tooltip`.
+The bundle is about 555 kB (160 kB gzip), of which about 112 kB is CSS. Most of the growth over the Tailwind version is Ark UI's tooltip machinery (zag + floating-ui) behind Chlorophyll's `Tooltip`.
 
 ## Styling: Panda CSS and Chlorophyll
 
@@ -100,24 +104,25 @@ The bundle is about 534 kB (154 kB gzip), of which about 112 kB is CSS. Most of 
 - Components come from [`src/chlorophyll.ts`](src/chlorophyll.ts), which imports each one from its own directory through the `chlorophyll-components/*` alias (Vite and `tsconfig.json`). The package's public entry points are barrels that also pull in three.js / skinview3d / react-three-fiber, and the package ships TypeScript sources, so the barrel would also type-check components we do not use under this project's stricter compiler options. Add new components to that file and their directory to `include` in `panda.config.ts`.
 - Panda classes are atomic: to override a shared style, merge style objects with `css(baseStyle, { ... })` (see `src/styles.ts`) instead of joining class names with `cx`.
 
-Used components: `Badge` (statuses), `Table` (steps, plugins), `Button` (links, toggles, log tabs), `Breadcrumb`, `ModalDialog` (screenshot lightbox), `Tooltip` (full hashes and failure messages), `Skeleton` / `Spinner` (loading), `Separator`.
+Used components: `Badge` (statuses), `Table` (status grid, tests, steps, plugins), `Button` (links, toggles, log tabs), `Breadcrumb`, `ModalDialog` (screenshot lightbox), `Tooltip` (full hashes and failure messages), `Skeleton` / `Spinner` (loading), `Separator`.
 
 `ModalDialog` only starts its exit animation on a backdrop click and has no Escape handling or focus trap. The lightbox adds Escape, keeps Tab inside the dialog, returns focus to the thumbnail, and closes through the same exit animation by clicking the backdrop element for Escape and the Close button (with a timeout in case the animation is disabled).
 
 ## Layout
 
 ```
-src/contract.ts        TypeScript types for result.json v1 and manifest v1 (mirror docs/contract.md)
+src/contract.ts        TypeScript types for result.json v2 and manifest v2 (mirror the design doc §5)
 src/manifest/          loading the manifest and exposing it through the router context
-src/lib/               pure helpers: asset URLs, formatting, run lookups, log parsing and filtering
+src/lib/               pure helpers: asset URLs, formatting, run/test lookups (flatLogs, findTest, ...), log parsing and filtering
 src/chlorophyll.ts     the Chlorophyll components the viewer uses
 src/styles.ts          shared Panda styles (panel, headings, ...)
-src/components/        shared UI (badges, lightbox, thumbnails) and per-page parts; logs/ is the log viewer
-src/pages/             the four routes
-src/router.tsx         route tree and hash history
+src/components/        shared UI (badges, nav, lightbox, thumbnails) and per-page parts: overview/ (status grid),
+                       test/ (version × player rows), run/ (tests table, sessions, steps, log ranges), logs/ (log viewer)
+src/pages/             the six routes
+src/router.tsx         route tree, hash history and the ?from=&to= search validation
 build-plugins/         the Vite plugin that turns the module script into a classic one
 panda.config.ts        Panda CSS config (Chlorophyll preset, trimmed recipes)
-dev/                   sample manifest and images for `pnpm dev`
+dev/                   generated sample site for `pnpm dev` (dev/generate.py)
 ```
 
 When the contract changes, update `src/contract.ts` first and let `pnpm typecheck` point at everything that needs to follow.

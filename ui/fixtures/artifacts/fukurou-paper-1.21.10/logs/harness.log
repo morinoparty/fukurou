@@ -1,1 +1,6 @@
-[fukurou] starting
+[fukurou] discovered 3 tests (suite game-test/fukurou.yml)
+[fukurou] session 0: joining Alice, Bob
+[fukurou] stamp-thinking-face: passed
+[fukurou] stamp-sleeping-face: passed
+[fukurou] session 1 (fresh-server): restarting the server
+[fukurou] stamp-legacy-format: passed

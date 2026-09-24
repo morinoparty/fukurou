@@ -1,0 +1,14 @@
+$schema: https://raw.githubusercontent.com/morinoparty/fukurou/v2/schema/suite.v1.json
+# A minimal suite with no plugin: used by fukurou's own CI to exercise `fukurou run` end to end.
+# See docs/usage.md for every field this file can have.
+scenarios:
+  - scenarios/*.json
+players:
+  - { name: Alice, op: true }
+settle: 1
+fixtures:
+  # A small stone platform to stand on, so screenshots are not looking at the void.
+  platform:
+    - { on: server, action: command, command: "fill -2 -61 -2 2 -61 2 minecraft:stone" }
+    - { on: server, action: command, command: "tp Alice 0.5 -60 0.5 0 0" }
+    - { action: wait, seconds: 1 }
