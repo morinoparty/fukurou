@@ -88,6 +88,7 @@ jobs:
     outputs:
       all: ${{ steps.all.outputs.matrix }}
       smoke: ${{ steps.smoke.outputs.matrix }}
+      smoke-include: ${{ steps.smoke-matrix.outputs.include }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -104,6 +105,28 @@ jobs:
         with:
           minecraft-version: latest
 
+      # Paper がまだ alpha の最新版（新しいクライアントの描画方式の変化などを早めに検出する）
+      - uses: ./versions
+        id: smoke-alpha
+        with:
+          minecraft-version: latest
+          paper-channel: alpha
+
+      # 最新の stable と最新の alpha を、チャンネル付きの matrix にまとめる（同じバージョンなら 1 つにする）
+      - name: Build the smoke matrix
+        id: smoke-matrix
+        env:
+          STABLE: ${{ steps.smoke.outputs.matrix }}
+          ALPHA: ${{ steps.smoke-alpha.outputs.matrix }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          stable, alpha = json.loads(os.environ["STABLE"]), json.loads(os.environ["ALPHA"])
+          include = [{"minecraft-version": v, "paper-channel": "stable"} for v in stable]
+          include += [{"minecraft-version": v, "paper-channel": "alpha"} for v in alpha if v not in stable]
+          print("include=" + json.dumps(include))
+          PY
+
       - name: Check the resolved matrices
         env:
           ALL: ${{ steps.all.outputs.matrix }}
@@ -117,14 +140,14 @@ jobs:
           ' "$ALL" "$SMOKE"
 
   smoke:
-    name: Smoke test (Minecraft ${{ matrix.minecraft-version }})
+    name: Smoke test (Minecraft ${{ matrix.minecraft-version }}, ${{ matrix.paper-channel }})
     needs: versions
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        minecraft-version: ${{ fromJSON(needs.versions.outputs.smoke) }}
+        include: ${{ fromJSON(needs.versions.outputs.smoke-include) }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -137,6 +160,7 @@ jobs:
         with:
           accept-eula: "true"
           minecraft-version: ${{ matrix.minecraft-version }}
+          paper-channel: ${{ matrix.paper-channel }}
           suite: examples/fukurou.yml
           plugins: ""
 
