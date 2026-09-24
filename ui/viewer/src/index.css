@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+/* 明暗どちらでも読みやすいように、背景と文字色は OS の設定（prefers-color-scheme）に合わせる */
+@layer base {
+  html {
+    color-scheme: light dark;
+  }
+  body {
+    @apply bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+  }
+  a {
+    @apply text-sky-700 underline-offset-2 hover:underline dark:text-sky-400;
+  }
+  code,
+  pre {
+    @apply font-mono text-[0.85em];
+  }
+}

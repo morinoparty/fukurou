@@ -1,7 +1,10 @@
 __pycache__/
 *.pyc
 .venv/
-.hukurou-work/
+.fukurou-work/
 build/
 node_modules/
 ui/viewer/dist/
+
+# fukurou run の既定の出力先
+fukurou-out/

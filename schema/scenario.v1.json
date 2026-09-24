@@ -1,0 +1,428 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A fukurou scenario: the players that join and the steps to run on the server and the clients.",
+  "$defs": {
+    "Chat": {
+      "additionalProperties": false,
+      "properties": {
+        "on": {
+          "not": {
+            "const": "server"
+          },
+          "pattern": "^[A-Za-z0-9_]{3,16}$",
+          "title": "On",
+          "type": "string"
+        },
+        "action": {
+          "const": "chat",
+          "default": "chat",
+          "title": "Action",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "on",
+        "text"
+      ],
+      "title": "Chat",
+      "type": "object"
+    },
+    "PlayerAssertNoLog": {
+      "additionalProperties": false,
+      "properties": {
+        "pattern": {
+          "minLength": 1,
+          "title": "Pattern",
+          "type": "string"
+        },
+        "on": {
+          "not": {
+            "const": "server"
+          },
+          "pattern": "^[A-Za-z0-9_]{3,16}$",
+          "title": "On",
+          "type": "string"
+        },
+        "action": {
+          "const": "assert_no_log",
+          "default": "assert_no_log",
+          "title": "Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "pattern",
+        "on"
+      ],
+      "title": "PlayerAssertNoLog",
+      "type": "object"
+    },
+    "PlayerSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "not": {
+            "const": "server"
+          },
+          "pattern": "^[A-Za-z0-9_]{3,16}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "op": {
+          "default": false,
+          "title": "Op",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "PlayerSpec",
+      "type": "object"
+    },
+    "PlayerWaitForLog": {
+      "additionalProperties": false,
+      "properties": {
+        "pattern": {
+          "minLength": 1,
+          "title": "Pattern",
+          "type": "string"
+        },
+        "on": {
+          "not": {
+            "const": "server"
+          },
+          "pattern": "^[A-Za-z0-9_]{3,16}$",
+          "title": "On",
+          "type": "string"
+        },
+        "action": {
+          "const": "wait_for_log",
+          "default": "wait_for_log",
+          "title": "Action",
+          "type": "string"
+        },
+        "timeout": {
+          "default": 60.0,
+          "exclusiveMinimum": 0,
+          "title": "Timeout",
+          "type": "number"
+        }
+      },
+      "required": [
+        "action",
+        "pattern",
+        "on"
+      ],
+      "title": "PlayerWaitForLog",
+      "type": "object"
+    },
+    "PressKey": {
+      "additionalProperties": false,
+      "properties": {
+        "on": {
+          "not": {
+            "const": "server"
+          },
+          "pattern": "^[A-Za-z0-9_]{3,16}$",
+          "title": "On",
+          "type": "string"
+        },
+        "action": {
+          "const": "press_key",
+          "default": "press_key",
+          "title": "Action",
+          "type": "string"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "on",
+        "key"
+      ],
+      "title": "PressKey",
+      "type": "object"
+    },
+    "Screenshot": {
+      "additionalProperties": false,
+      "properties": {
+        "on": {
+          "not": {
+            "const": "server"
+          },
+          "pattern": "^[A-Za-z0-9_]{3,16}$",
+          "title": "On",
+          "type": "string"
+        },
+        "action": {
+          "const": "screenshot",
+          "default": "screenshot",
+          "title": "Action",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "on",
+        "name"
+      ],
+      "title": "Screenshot",
+      "type": "object"
+    },
+    "ServerAssertNoLog": {
+      "additionalProperties": false,
+      "properties": {
+        "pattern": {
+          "minLength": 1,
+          "title": "Pattern",
+          "type": "string"
+        },
+        "on": {
+          "const": "server",
+          "title": "On",
+          "type": "string"
+        },
+        "action": {
+          "const": "assert_no_log",
+          "default": "assert_no_log",
+          "title": "Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "pattern",
+        "on"
+      ],
+      "title": "ServerAssertNoLog",
+      "type": "object"
+    },
+    "ServerCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "on": {
+          "const": "server",
+          "title": "On",
+          "type": "string"
+        },
+        "action": {
+          "const": "command",
+          "default": "command",
+          "title": "Action",
+          "type": "string"
+        },
+        "command": {
+          "minLength": 1,
+          "title": "Command",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "on",
+        "command"
+      ],
+      "title": "ServerCommand",
+      "type": "object"
+    },
+    "ServerWaitForLog": {
+      "additionalProperties": false,
+      "properties": {
+        "pattern": {
+          "minLength": 1,
+          "title": "Pattern",
+          "type": "string"
+        },
+        "on": {
+          "const": "server",
+          "title": "On",
+          "type": "string"
+        },
+        "action": {
+          "const": "wait_for_log",
+          "default": "wait_for_log",
+          "title": "Action",
+          "type": "string"
+        },
+        "timeout": {
+          "default": 60.0,
+          "exclusiveMinimum": 0,
+          "title": "Timeout",
+          "type": "number"
+        }
+      },
+      "required": [
+        "action",
+        "pattern",
+        "on"
+      ],
+      "title": "ServerWaitForLog",
+      "type": "object"
+    },
+    "TypeText": {
+      "additionalProperties": false,
+      "properties": {
+        "on": {
+          "not": {
+            "const": "server"
+          },
+          "pattern": "^[A-Za-z0-9_]{3,16}$",
+          "title": "On",
+          "type": "string"
+        },
+        "action": {
+          "const": "type_text",
+          "default": "type_text",
+          "title": "Action",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "on",
+        "text"
+      ],
+      "title": "TypeText",
+      "type": "object"
+    },
+    "Wait": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "const": "wait",
+          "default": "wait",
+          "title": "Action",
+          "type": "string"
+        },
+        "seconds": {
+          "exclusiveMinimum": 0,
+          "title": "Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "action",
+        "seconds"
+      ],
+      "title": "Wait",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "$Schema"
+    },
+    "players": {
+      "items": {
+        "$ref": "#/$defs/PlayerSpec"
+      },
+      "minItems": 1,
+      "title": "Players",
+      "type": "array"
+    },
+    "steps": {
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/Wait"
+          },
+          {
+            "discriminator": {
+              "mapping": {
+                "assert_no_log": "#/$defs/ServerAssertNoLog",
+                "command": "#/$defs/ServerCommand",
+                "wait_for_log": "#/$defs/ServerWaitForLog"
+              },
+              "propertyName": "action"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/ServerCommand"
+              },
+              {
+                "$ref": "#/$defs/ServerWaitForLog"
+              },
+              {
+                "$ref": "#/$defs/ServerAssertNoLog"
+              }
+            ]
+          },
+          {
+            "discriminator": {
+              "mapping": {
+                "assert_no_log": "#/$defs/PlayerAssertNoLog",
+                "chat": "#/$defs/Chat",
+                "press_key": "#/$defs/PressKey",
+                "screenshot": "#/$defs/Screenshot",
+                "type_text": "#/$defs/TypeText",
+                "wait_for_log": "#/$defs/PlayerWaitForLog"
+              },
+              "propertyName": "action"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/PressKey"
+              },
+              {
+                "$ref": "#/$defs/TypeText"
+              },
+              {
+                "$ref": "#/$defs/Chat"
+              },
+              {
+                "$ref": "#/$defs/PlayerWaitForLog"
+              },
+              {
+                "$ref": "#/$defs/PlayerAssertNoLog"
+              },
+              {
+                "$ref": "#/$defs/Screenshot"
+              }
+            ]
+          }
+        ]
+      },
+      "minItems": 1,
+      "title": "Steps",
+      "type": "array"
+    }
+  },
+  "required": [
+    "players",
+    "steps"
+  ],
+  "title": "Scenario",
+  "type": "object"
+}

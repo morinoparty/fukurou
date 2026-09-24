@@ -1,21 +1,16 @@
-#
-# Written in 2023-2026 by Nikomaru <nikomaru@nikomaru.dev>
-#
-# To the extent possible under law, the author(s) have dedicated all copyright and related and neighboring rights to this software to the public domain worldwide.This software is distributed without any warranty.
-#
-# You should have received a copy of the CC0 Public Domain Dedication along with this software.
-# If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
-#
 """scenario パッケージの主要な分岐を確認するテスト。"""
 
+import hashlib
 from pathlib import Path
-import unittest
 
-from scenario import (
+import pytest
+
+from fukurou.scenario import (
     Chat,
     PlayerSpec,
     PressKey,
     ScenarioError,
+    ScenarioSource,
     Screenshot,
     ServerCommand,
     ServerWaitForLog,
@@ -24,7 +19,7 @@ from scenario import (
     parse_scenario,
 )
 
-SCENARIOS_DIR = Path(__file__).resolve().parents[1] / "scenarios"
+EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "examples"
 
 
 def scenario(*steps, players=({"name": "Alice"},)):
@@ -32,68 +27,105 @@ def scenario(*steps, players=({"name": "Alice"},)):
     return {"players": list(players), "steps": list(steps)}
 
 
-class ParseScenarioTest(unittest.TestCase):
-    def test_routes_steps_by_target(self):
-        parsed = parse_scenario(
+def test_routes_steps_by_target():
+    parsed = parse_scenario(
+        scenario(
+            {"on": "server", "action": "command", "command": "/time set noon"},
+            {"on": "server", "action": "wait_for_log", "pattern": "Done"},
+            {"on": "Alice", "action": "press_key", "key": "Enter"},
+            {"on": "Bob", "action": "chat", "text": "/st :thinking-face:"},
+            {"on": "Bob", "action": "screenshot", "name": "stamp"},
+            {"action": "wait", "seconds": 1},
+            players=({"name": "Alice", "op": True}, {"name": "Bob"}),
+        )
+    )
+    assert parsed.players == [PlayerSpec(name="Alice", op=True), PlayerSpec(name="Bob")]
+    assert parsed.steps == [
+        ServerCommand(on="server", command="time set noon"),
+        ServerWaitForLog(on="server", pattern="Done", timeout=60.0),
+        PressKey(on="Alice", key="Return"),
+        Chat(on="Bob", text="/st :thinking-face:"),
+        Screenshot(on="Bob", name="stamp"),
+        Wait(seconds=1),
+    ]
+
+
+def test_rejects_actions_for_the_wrong_target_and_typos():
+    with pytest.raises(ScenarioError, match="does not match any of the expected tags"):
+        parse_scenario(scenario({"on": "server", "action": "press_key", "key": "t"}))
+    with pytest.raises(ScenarioError, match="does not match any of the expected tags"):
+        parse_scenario(scenario({"on": "Alice", "action": "command", "command": "stop"}))
+    with pytest.raises(ScenarioError, match="Extra inputs are not permitted"):
+        parse_scenario(scenario({"on": "Alice", "action": "press_key", "key": "t", "key_inturrupt": "t"}))
+
+
+def test_rejects_undeclared_or_invalid_players():
+    with pytest.raises(ScenarioError, match="not declared in players"):
+        parse_scenario(scenario({"on": "Carol", "action": "chat", "text": "hi"}))
+    with pytest.raises(ScenarioError, match="reserved"):
+        parse_scenario(scenario({"action": "wait", "seconds": 1}, players=({"name": "server"},)))
+    with pytest.raises(ScenarioError, match="unique"):
+        parse_scenario(scenario({"action": "wait", "seconds": 1}, players=({"name": "Alice"}, {"name": "Alice"})))
+
+
+def test_rejects_invalid_values():
+    with pytest.raises(ScenarioError, match="greater than 0"):
+        parse_scenario(scenario({"action": "wait", "seconds": 0}))
+    with pytest.raises(ScenarioError, match="invalid regular expression"):
+        parse_scenario(scenario({"on": "server", "action": "wait_for_log", "pattern": "("}))
+    with pytest.raises(ScenarioError, match="should match pattern"):
+        parse_scenario(scenario({"on": "Alice", "action": "screenshot", "name": "../escape"}))
+    with pytest.raises(ScenarioError, match="duplicate"):
+        parse_scenario(
             scenario(
-                {"on": "server", "action": "command", "command": "/time set noon"},
-                {"on": "server", "action": "wait_for_log", "pattern": "Done"},
-                {"on": "Alice", "action": "press_key", "key": "Enter"},
-                {"on": "Bob", "action": "chat", "text": "/st :thinking-face:"},
-                {"on": "Bob", "action": "screenshot", "name": "stamp"},
-                {"action": "wait", "seconds": 1},
-                players=({"name": "Alice", "op": True}, {"name": "Bob"}),
+                {"on": "Alice", "action": "screenshot", "name": "a"},
+                {"on": "Alice", "action": "screenshot", "name": "a"},
             )
         )
-        self.assertEqual(parsed.players, [PlayerSpec(name="Alice", op=True), PlayerSpec(name="Bob")])
-        self.assertEqual(
-            parsed.steps,
-            [
-                ServerCommand(command="time set noon"),
-                ServerWaitForLog(pattern="Done", timeout=60.0),
-                PressKey(on="Alice", key="Return"),
-                Chat(on="Bob", text="/st :thinking-face:"),
-                Screenshot(on="Bob", name="stamp"),
-                Wait(seconds=1),
-            ],
-        )
-
-    def test_rejects_actions_for_the_wrong_target_and_typos(self):
-        with self.assertRaisesRegex(ScenarioError, "does not match any of the expected tags"):
-            parse_scenario(scenario({"on": "server", "action": "press_key", "key": "t"}))
-        with self.assertRaisesRegex(ScenarioError, "does not match any of the expected tags"):
-            parse_scenario(scenario({"on": "Alice", "action": "command", "command": "stop"}))
-        with self.assertRaisesRegex(ScenarioError, "Extra inputs are not permitted"):
-            parse_scenario(scenario({"on": "Alice", "action": "press_key", "key": "t", "key_inturrupt": "t"}))
-
-    def test_rejects_undeclared_or_invalid_players(self):
-        with self.assertRaisesRegex(ScenarioError, "not declared in players"):
-            parse_scenario(scenario({"on": "Carol", "action": "chat", "text": "hi"}))
-        with self.assertRaisesRegex(ScenarioError, "reserved"):
-            parse_scenario(scenario({"action": "wait", "seconds": 1}, players=({"name": "server"},)))
-        with self.assertRaisesRegex(ScenarioError, "unique"):
-            parse_scenario(scenario({"action": "wait", "seconds": 1}, players=({"name": "Alice"}, {"name": "Alice"})))
-
-    def test_rejects_invalid_values(self):
-        with self.assertRaisesRegex(ScenarioError, "greater than 0"):
-            parse_scenario(scenario({"action": "wait", "seconds": 0}))
-        with self.assertRaisesRegex(ScenarioError, "invalid regular expression"):
-            parse_scenario(scenario({"on": "server", "action": "wait_for_log", "pattern": "("}))
-        with self.assertRaisesRegex(ScenarioError, "should match pattern"):
-            parse_scenario(scenario({"on": "Alice", "action": "screenshot", "name": "../escape"}))
-        with self.assertRaisesRegex(ScenarioError, "duplicate"):
-            parse_scenario(
-                scenario(
-                    {"on": "Alice", "action": "screenshot", "name": "a"},
-                    {"on": "Alice", "action": "screenshot", "name": "a"},
-                )
-            )
-
-    def test_bundled_scenarios_are_valid(self):
-        for path in sorted(SCENARIOS_DIR.glob("*.json")):
-            with self.subTest(path=path.name):
-                self.assertTrue(load_scenario(path).steps)
+    # 失敗時の画面の名前と衝突しないよう予約している
+    with pytest.raises(ScenarioError, match="reserved for the failure screenshot"):
+        parse_scenario(scenario({"on": "Alice", "action": "screenshot", "name": "failure"}))
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_yaml_and_json_are_both_accepted():
+    yaml_text = """
+players:
+  - name: Alice
+steps:
+  - {on: server, action: command, command: time set noon}
+  - action: wait
+    seconds: 2
+"""
+    # タブでインデントした JSON は YAML としては読めないが、JSON としては読める
+    json_text = '{\n\t"players": [{"name": "Alice"}],\n\t"steps": [{"action": "wait", "seconds": 2}]\n}'
+    assert ScenarioSource.inline(yaml_text).parse().steps[1] == Wait(seconds=2)
+    assert ScenarioSource.inline(json_text).parse().steps == [Wait(seconds=2)]
+    with pytest.raises(ScenarioError, match="neither valid JSON nor valid YAML"):
+        ScenarioSource.inline("players: [").parse()
+
+
+def test_source_records_name_origin_and_hash(tmp_path):
+    path = tmp_path / "hello-world.yml"
+    text = "players: [{name: Alice}]\nsteps: [{action: wait, seconds: 1}]\n"
+    path.write_text(text, encoding="utf-8")
+    info = ScenarioSource.from_file(path).info()
+    assert info.name == "hello-world"
+    assert info.source == f"file:{path.as_posix()}"
+    assert info.sha256 == hashlib.sha256(text.encode()).hexdigest()
+    assert ScenarioSource.inline(text).info().name == "inline"
+
+
+def test_bundled_examples_are_valid():
+    paths = sorted(EXAMPLES_DIR.glob("*.json")) + sorted(EXAMPLES_DIR.glob("*.y*ml"))
+    assert paths
+    for path in paths:
+        assert load_scenario(path).steps, path.name
+
+
+def test_yaml_on_is_not_a_boolean():
+    # YAML 1.1 では on / yes が真偽値になるが、シナリオでは文字列として読む
+    parsed = ScenarioSource.inline(
+        "players: [{name: Alice, op: true}]\nsteps:\n  - on: Alice\n    action: chat\n    text: yes\n"
+    ).parse()
+    assert parsed.steps == [Chat(on="Alice", text="yes")]
+    assert parsed.players[0].op is True

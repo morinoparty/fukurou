@@ -1,0 +1,28 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  move-major-tag:
+    runs-on: ubuntu-24.04
+    steps:
+      # タグを push するため、認証情報は残したままチェックアウトする
+      - uses: actions/checkout@v7
+
+      - name: Move the major tag to this release
+        run: |
+          # v1.3.0-rc.1 のようなプレリリースで @v1 の利用者を巻き込まないよう、正式版だけで動かす
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "$GITHUB_REF_NAME is a pre-release; not moving the major tag."
+            exit 0
+          fi
+          # v1.2.3 から v1 を取り出し、利用者が @v1 で最新のリリースを使えるようにする
+          major="${GITHUB_REF_NAME%%.*}"
+          git tag -f "$major" "$GITHUB_SHA"
+          git push -f origin "refs/tags/$major"

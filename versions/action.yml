@@ -1,0 +1,46 @@
+name: fukurou versions
+description: Resolve a Minecraft version spec ("latest", "1.21.11", "1.21.6-", "1.20.5-1.21.11") to a JSON array for a job matrix.
+author: morinoparty
+branding:
+  icon: list
+  color: green
+
+inputs:
+  minecraft-version:
+    description: 'Version spec: "latest", a single version such as "1.21.11", an open range such as "1.21.6-", or a closed range such as "1.20.5-1.21.11". Minecraft 1.20 or later.'
+    required: false
+    default: latest
+  max-versions:
+    description: Fail when the spec resolves to more versions than this.
+    required: false
+    default: "16"
+
+outputs:
+  matrix:
+    description: JSON array of Minecraft versions, oldest first. Use it with fromJSON() in a matrix.
+    value: ${{ steps.resolve.outputs.matrix }}
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      # 既定では利用者のリポジトリを見て uv の版とキャッシュキーを決めてしまうため、fukurou 自身を基準にする
+      with:
+        version: "0.12.18"
+        working-directory: ${{ github.action_path }}/..
+        cache-dependency-glob: uv.lock
+        cache-suffix: fukurou
+        ignore-empty-workdir: "true"
+
+    - name: Resolve versions from the Mojang manifest and the Paper API
+      id: resolve
+      shell: bash
+      # 入力は env 経由で渡し、run スクリプト内に直接展開しない（コマンドインジェクション対策）
+      env:
+        MINECRAFT_VERSION: ${{ inputs.minecraft-version }}
+        MAX_VERSIONS: ${{ inputs.max-versions }}
+      run: |
+        # このアクションは versions/ にあるため、Python プロジェクトは一つ上のディレクトリ
+        matrix="$(uv run --frozen --no-dev --project "$GITHUB_ACTION_PATH/.." fukurou versions "$MINECRAFT_VERSION" --max-versions "$MAX_VERSIONS")"
+        echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+        echo "Minecraft versions for \`$MINECRAFT_VERSION\`: \`$matrix\`" >> "$GITHUB_STEP_SUMMARY"

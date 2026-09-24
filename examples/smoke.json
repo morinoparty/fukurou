@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/morinoparty/fukurou/main/schema/scenario.v1.json",
+  "players": [
+    { "name": "Alice", "op": true }
+  ],
+  "steps": [
+    { "on": "server", "action": "command", "command": "time set noon" },
+    { "on": "server", "action": "command", "command": "weather clear" },
+    { "action": "wait", "seconds": 10 },
+    { "on": "Alice", "action": "screenshot", "name": "smoke" }
+  ]
+}

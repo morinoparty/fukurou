@@ -1,0 +1,242 @@
+name: fukurou viewer
+description: >-
+  Collect fukurou run artifacts into one static viewer site, upload it as a workflow artifact,
+  and optionally publish it to S3-compatible storage (for example Cloudflare R2).
+author: morinoparty
+
+branding:
+  icon: eye
+  color: green
+
+inputs:
+  artifact-pattern:
+    description: Glob pattern of the fukurou run artifacts to download.
+    required: false
+    default: fukurou-paper-*
+  artifacts-dir:
+    description: Use this local directory (one subdirectory per artifact) instead of downloading artifacts.
+    required: false
+    default: ""
+  title:
+    description: Title shown in the viewer. Defaults to the repository name.
+    required: false
+    default: ""
+  include-logs:
+    description: Include server/client logs and crash reports in the site ("true" or "false").
+    required: false
+    default: "true"
+  output-dir:
+    description: Directory to write the site to. Defaults to $RUNNER_TEMP/fukurou-site.
+    required: false
+    default: ""
+  site-artifact-name:
+    description: Name of the workflow artifact that holds the site.
+    required: false
+    default: fukurou-site
+  retention-days:
+    description: Retention days of the site artifact.
+    required: false
+    default: "7"
+  upload:
+    description: >-
+      Publish the site to S3-compatible storage: "auto" (only when aws-access-key-id is set),
+      "true" or "false".
+    required: false
+    default: auto
+  s3-endpoint:
+    description: S3-compatible endpoint URL (for R2, https://<account id>.r2.cloudflarestorage.com). Empty for AWS S3.
+    required: false
+    default: ""
+  s3-bucket:
+    description: Bucket to publish to.
+    required: false
+    default: ""
+  s3-prefix:
+    description: >-
+      Key prefix inside the bucket. Screenshots are uploaded with an immutable cache policy, so use a
+      prefix unique to the run. Defaults to <owner>/<repo>/<run id>-<run attempt>.
+    required: false
+    default: ""
+  s3-region:
+    description: Region of the bucket ("auto" works for R2).
+    required: false
+    default: auto
+  aws-access-key-id:
+    description: Access key ID for the bucket.
+    required: false
+    default: ""
+  aws-secret-access-key:
+    description: Secret access key for the bucket.
+    required: false
+    default: ""
+  public-base-url:
+    description: Public URL that serves the bucket root, used to build the "url" output.
+    required: false
+    default: ""
+
+outputs:
+  url:
+    description: Public URL of the uploaded viewer (empty when not uploaded or public-base-url is empty).
+    value: ${{ steps.publish.outputs.url }}
+  uploaded:
+    description: '"true" when the site was published to S3-compatible storage.'
+    value: ${{ steps.publish.outputs.uploaded }}
+  status:
+    description: '"passed" when every run passed, "failed" when any run failed or errored, "empty" when no runs were found.'
+    value: ${{ steps.build.outputs.status }}
+  summary:
+    description: 'Run counts as JSON, for example {"total":7,"passed":6,"failed":1,"error":0}.'
+    value: ${{ steps.build.outputs.summary }}
+  site-dir:
+    description: Local directory that holds the site.
+    value: ${{ steps.prep.outputs.site-dir }}
+
+runs:
+  using: composite
+  steps:
+    # 入力の既定値を解決し、アップロードの有無と必要な設定を最初に検証する。
+    # 入力は env 経由でだけ渡し、シェルスクリプトに直接展開しない（インジェクション対策）
+    - name: Prepare
+      id: prep
+      shell: bash
+      env:
+        INPUT_ARTIFACTS_DIR: ${{ inputs.artifacts-dir }}
+        INPUT_OUTPUT_DIR: ${{ inputs.output-dir }}
+        INPUT_TITLE: ${{ inputs.title }}
+        INPUT_INCLUDE_LOGS: ${{ inputs.include-logs }}
+        INPUT_UPLOAD: ${{ inputs.upload }}
+        INPUT_S3_BUCKET: ${{ inputs.s3-bucket }}
+        INPUT_S3_PREFIX: ${{ inputs.s3-prefix }}
+        INPUT_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
+        INPUT_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
+      run: |
+        set -euo pipefail
+        fail() { echo "::error title=fukurou/ui::$*"; exit 1; }
+
+        # artifacts-dir が空ならダウンロード先の一時ディレクトリを使う
+        if [[ -n "${INPUT_ARTIFACTS_DIR}" ]]; then
+          artifacts_dir="${INPUT_ARTIFACTS_DIR}"
+          [[ -d "${artifacts_dir}" ]] || fail "artifacts-dir ${artifacts_dir} does not exist"
+          download=false
+        else
+          artifacts_dir="${RUNNER_TEMP}/fukurou-artifacts"
+          rm -rf "${artifacts_dir}"
+          mkdir -p "${artifacts_dir}"
+          download=true
+        fi
+
+        case "${INPUT_INCLUDE_LOGS}" in
+          true) logs_flag=--include-logs ;;
+          false) logs_flag=--no-include-logs ;;
+          *) fail "include-logs must be \"true\" or \"false\", got \"${INPUT_INCLUDE_LOGS}\"" ;;
+        esac
+
+        # auto はアクセスキーが渡されたときだけアップロードする（fork の PR では secrets が空になるため）
+        case "${INPUT_UPLOAD}" in
+          auto) if [[ -n "${INPUT_ACCESS_KEY_ID}" ]]; then do_upload=true; else do_upload=false; fi ;;
+          true) do_upload=true ;;
+          false) do_upload=false ;;
+          *) fail "upload must be \"auto\", \"true\" or \"false\", got \"${INPUT_UPLOAD}\"" ;;
+        esac
+
+        if [[ "${do_upload}" == true ]]; then
+          [[ -n "${INPUT_ACCESS_KEY_ID}" && -n "${INPUT_SECRET_ACCESS_KEY}" ]] \
+            || fail "upload is enabled but aws-access-key-id or aws-secret-access-key is empty"
+          [[ -n "${INPUT_S3_BUCKET}" ]] || fail "upload is enabled but s3-bucket is empty"
+        fi
+
+        # スクリーンショットは immutable で送るので、既定のプレフィックスは実行ごとに一意にする
+        prefix="${INPUT_S3_PREFIX:-${GITHUB_REPOSITORY}/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}}"
+
+        # GITHUB_OUTPUT の行を壊さないよう、タイトルの改行は空白にする
+        title="${INPUT_TITLE:-${GITHUB_REPOSITORY}}"
+        title="${title//$'\r'/ }"
+        title="${title//$'\n'/ }"
+
+        {
+          echo "artifacts-dir=${artifacts_dir}"
+          echo "download=${download}"
+          echo "site-dir=${INPUT_OUTPUT_DIR:-${RUNNER_TEMP}/fukurou-site}"
+          echo "title=${title}"
+          echo "logs-flag=${logs_flag}"
+          echo "do-upload=${do_upload}"
+          echo "prefix=${prefix}"
+        } >>"${GITHUB_OUTPUT}"
+
+    # 一致が1件だけだと merge-multiple: false でも <artifact 名>/ を作らず直下に展開される。
+    # build_manifest.py がその平置きレイアウトを検出して1件の run として読む
+    - name: Download fukurou artifacts
+      if: steps.prep.outputs.download == 'true'
+      uses: actions/download-artifact@v8
+      with:
+        pattern: ${{ inputs.artifact-pattern }}
+        merge-multiple: false
+        path: ${{ steps.prep.outputs.artifacts-dir }}
+
+    # run が失敗していてもサイトは作る。status / summary は build_manifest.py が GITHUB_OUTPUT に書く
+    - name: Build site
+      id: build
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        ARTIFACTS_DIR: ${{ steps.prep.outputs.artifacts-dir }}
+        SITE_DIR: ${{ steps.prep.outputs.site-dir }}
+        SITE_TITLE: ${{ steps.prep.outputs.title }}
+        LOGS_FLAG: ${{ steps.prep.outputs.logs-flag }}
+        SITE_ARTIFACT_NAME: ${{ inputs.site-artifact-name }}
+      run: |
+        set -euo pipefail
+        # 再実行時に前回のサイト artifact がパターンに一致しても run として拾わないよう除外する
+        python3 "${ACTION_PATH}/scripts/build_manifest.py" \
+          --artifacts-dir "${ARTIFACTS_DIR}" \
+          --out "${SITE_DIR}" \
+          --title="${SITE_TITLE}" \
+          "${LOGS_FLAG}" \
+          --exclude "${SITE_ARTIFACT_NAME}"
+
+    - name: Upload site artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.site-artifact-name }}
+        path: ${{ steps.prep.outputs.site-dir }}
+        retention-days: ${{ inputs.retention-days }}
+        overwrite: true
+        if-no-files-found: error
+
+    - name: Publish to S3-compatible storage
+      id: publish
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        DO_UPLOAD: ${{ steps.prep.outputs.do-upload }}
+        SITE_DIR: ${{ steps.prep.outputs.site-dir }}
+        S3_BUCKET: ${{ inputs.s3-bucket }}
+        S3_PREFIX: ${{ steps.prep.outputs.prefix }}
+        S3_ENDPOINT: ${{ inputs.s3-endpoint }}
+        S3_REGION: ${{ inputs.s3-region }}
+        AWS_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
+        AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
+        PUBLIC_BASE_URL: ${{ inputs.public-base-url }}
+      run: |
+        set -euo pipefail
+        if [[ "${DO_UPLOAD}" != true ]]; then
+          echo "Skipping upload to S3-compatible storage."
+          { echo "uploaded=false"; echo "url="; } >>"${GITHUB_OUTPUT}"
+          exit 0
+        fi
+
+        # upload.sh は正規化したプレフィックスを自分の GITHUB_OUTPUT とは別のファイルに書かせて受け取る
+        upload_output="$(mktemp)"
+        GITHUB_OUTPUT="${upload_output}" bash "${ACTION_PATH}/scripts/upload.sh"
+        prefix="$(sed -n 's/^prefix=//p' "${upload_output}")"
+        rm -f "${upload_output}"
+
+        url=""
+        if [[ -n "${PUBLIC_BASE_URL}" ]]; then
+          base="${PUBLIC_BASE_URL%/}"
+          while [[ "${base}" == */ ]]; do base="${base%/}"; done
+          url="${base}/${prefix}/index.html"
+          echo "Viewer: ${url}"
+          echo "**Viewer:** ${url}" >>"${GITHUB_STEP_SUMMARY}"
+        fi
+        { echo "uploaded=true"; echo "url=${url}"; } >>"${GITHUB_OUTPUT}"

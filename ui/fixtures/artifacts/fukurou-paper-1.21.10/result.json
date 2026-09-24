@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "id": "paper-1.21.10",
+  "status": "passed",
+  "fukurou": {
+    "version": "0.1.0",
+    "portablemc": "5.0.4"
+  },
+  "minecraft": {
+    "version": "1.21.10",
+    "server": "paper",
+    "build": 130,
+    "channel": "STABLE"
+  },
+  "java": {
+    "server": 21
+  },
+  "scenario": {
+    "name": "stamp-thinking-face",
+    "source": "file:game-test/scenarios/stamp-thinking-face.json",
+    "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "plugins": [
+    {
+      "file": "MineStamp-all.jar",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "name": "MineStamp",
+      "version": "1.0",
+      "role": "under-test",
+      "classFileMajor": 65,
+      "enabled": true
+    }
+  ],
+  "players": [
+    {
+      "name": "Alice",
+      "op": true,
+      "joined": true
+    },
+    {
+      "name": "Bob",
+      "op": false,
+      "joined": true
+    }
+  ],
+  "ci": {
+    "repository": "morinoparty/MineStamp",
+    "sha": "abc1234def5678abc1234def5678abc1234def56",
+    "ref": "refs/pull/177/merge",
+    "runId": "123",
+    "runAttempt": "1",
+    "serverUrl": "https://github.com"
+  },
+  "steps": [
+    {
+      "index": 0,
+      "on": "server",
+      "action": "command",
+      "label": "time set noon",
+      "status": "passed",
+      "durationMs": 12
+    },
+    {
+      "index": 1,
+      "on": "Alice",
+      "action": "chat",
+      "label": ":thinking_face:",
+      "status": "passed",
+      "durationMs": 300
+    },
+    {
+      "index": 2,
+      "on": "Alice",
+      "action": "screenshot",
+      "label": "stamp-thinking-face",
+      "status": "passed",
+      "durationMs": 800,
+      "screenshot": "screenshots/Alice/stamp-thinking-face.png"
+    },
+    {
+      "index": 3,
+      "on": "Bob",
+      "action": "screenshot",
+      "label": "stamp-thinking-face",
+      "status": "passed",
+      "durationMs": 790,
+      "screenshot": "screenshots/Bob/stamp-thinking-face.png"
+    },
+    {
+      "index": 4,
+      "on": "Bob",
+      "action": "screenshot",
+      "label": "inventory",
+      "status": "passed",
+      "durationMs": 760,
+      "screenshot": "screenshots/Bob/inventory.png"
+    }
+  ],
+  "screenshots": [
+    {
+      "player": "Alice",
+      "name": "stamp-thinking-face",
+      "path": "screenshots/Alice/stamp-thinking-face.png",
+      "width": 32,
+      "height": 18,
+      "stepIndex": 2
+    },
+    {
+      "player": "Bob",
+      "name": "stamp-thinking-face",
+      "path": "screenshots/Bob/stamp-thinking-face.png",
+      "width": 32,
+      "height": 18,
+      "stepIndex": 3
+    },
+    {
+      "player": "Bob",
+      "name": "inventory",
+      "path": "screenshots/Bob/inventory.png",
+      "width": 32,
+      "height": 18,
+      "stepIndex": 4
+    }
+  ],
+  "logs": [
+    {
+      "kind": "harness",
+      "path": "logs/harness.log"
+    },
+    {
+      "kind": "server",
+      "path": "logs/server.log"
+    },
+    {
+      "kind": "client",
+      "player": "Alice",
+      "path": "logs/clients/Alice.log"
+    },
+    {
+      "kind": "client",
+      "player": "Bob",
+      "path": "logs/clients/Bob.log"
+    }
+  ],
+  "startedAt": "2026-09-24T03:00:00Z",
+  "finishedAt": "2026-09-24T03:05:12Z",
+  "durationMs": 312000
+}

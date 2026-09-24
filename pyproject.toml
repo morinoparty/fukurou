@@ -1,5 +1,5 @@
 [project]
-name = "hukurou"
+name = "fukurou"
 version = "0.1.0"
 description = "In-game test runner for Minecraft plugins: drive real clients from JSON scenarios"
 readme = "README.md"
@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.scripts]
-hukurou = "hukurou.cli:main"
+fukurou = "fukurou.cli:main"
 
 [dependency-groups]
 dev = [
@@ -23,7 +23,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/hukurou"]
+packages = ["src/fukurou"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

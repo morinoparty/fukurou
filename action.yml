@@ -1,0 +1,292 @@
+name: fukurou
+description: Run an in-game scenario against one Minecraft (Paper) version with real vanilla clients, and upload screenshots, logs and result.json.
+author: morinoparty
+branding:
+  icon: camera
+  color: green
+
+inputs:
+  accept-eula:
+    description: 'Set to "true" to accept the Minecraft EULA (https://aka.ms/MinecraftEULA). The server and clients do not start without it.'
+    required: true
+  minecraft-version:
+    description: 'A single Minecraft version, such as "1.21.11". Use morinoparty/fukurou/versions to expand ranges into a matrix.'
+    required: true
+  scenario:
+    description: Inline scenario (JSON or YAML). Use either this or scenario-file.
+    required: false
+    default: ""
+  scenario-file:
+    description: Path to a scenario file (JSON or YAML), relative to the workspace. Use either this or scenario.
+    required: false
+    default: ""
+  plugins-dir:
+    description: Directory that contains the plugin jars under test.
+    required: false
+    default: ${{ github.workspace }}
+  plugins:
+    description: Glob patterns for plugin jars inside plugins-dir, separated by newlines or commas. An empty string installs no plugins.
+    required: false
+    default: "*.jar"
+  dependencies:
+    description: 'YAML list of extra plugins to download: {url, sha256?} or {github: owner/repo, tag, asset}.'
+    required: false
+    default: ""
+  server-properties:
+    description: Extra server.properties lines ("key=value", one per line).
+    required: false
+    default: ""
+  server-files:
+    description: Directory whose contents are copied into the server directory before it starts (for example plugins/<Name>/config.yml).
+    required: false
+    default: ""
+  server-build:
+    description: Paper build number. Defaults to the latest stable build for the version.
+    required: false
+    default: ""
+  java-version:
+    description: 'Java major version for the server, or "auto" to pick max(the version Mojang requires, the version the plugins are compiled for).'
+    required: false
+    default: auto
+  work-dir:
+    description: Working directory for the server, clients and caches. Defaults to "$RUNNER_TEMP/fukurou-work".
+    required: false
+    default: ""
+  out-dir:
+    description: Output directory for result.json, screenshots and logs. Defaults to "$RUNNER_TEMP/fukurou-out".
+    required: false
+    default: ""
+  upload-artifact:
+    description: Set to "true" to upload out-dir as an artifact (also when the run fails).
+    required: false
+    default: "true"
+  artifact-name:
+    description: Artifact name. Defaults to "fukurou-paper-<minecraft-version>".
+    required: false
+    default: ""
+  retention-days:
+    description: Retention days of the uploaded artifact.
+    required: false
+    default: "14"
+  github-token:
+    description: Token for the GitHub API, used to download "github:" dependencies (avoids the unauthenticated rate limit and allows private repositories).
+    required: false
+    default: ${{ github.token }}
+  skip-system-deps:
+    description: Set to "true" to skip installing Xvfb, xdotool and the OpenGL/OpenAL libraries with apt-get.
+    required: false
+    default: "false"
+
+outputs:
+  result:
+    description: '"passed", "failed" or "error", read from result.json ("error" when it is missing).'
+    value: ${{ steps.outputs.outputs.result }}
+  result-file:
+    description: Path to result.json.
+    value: ${{ steps.outputs.outputs.result-file }}
+  artifact-name:
+    description: Name of the uploaded artifact.
+    value: ${{ steps.prepare.outputs.artifact-name }}
+  out-dir:
+    description: Output directory.
+    value: ${{ steps.prepare.outputs.out-dir }}
+
+runs:
+  using: composite
+  steps:
+    # 入力は必ず env 経由で渡し、run スクリプト内に ${{ }} を直接展開しない（コマンドインジェクション対策）
+    - name: Check inputs
+      id: prepare
+      shell: bash
+      env:
+        ACCEPT_EULA: ${{ inputs.accept-eula }}
+        MINECRAFT_VERSION: ${{ inputs.minecraft-version }}
+        SCENARIO: ${{ inputs.scenario }}
+        SCENARIO_FILE: ${{ inputs.scenario-file }}
+        ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        WORK_DIR: ${{ inputs.work-dir }}
+        OUT_DIR: ${{ inputs.out-dir }}
+      run: |
+        # 起動前に分かる入力の誤りはここで止め、重いセットアップを走らせない
+        if [ "$ACCEPT_EULA" != "true" ]; then
+          echo "::error::fukurou starts a Minecraft server and clients, which requires accepting the Minecraft EULA (https://aka.ms/MinecraftEULA). Set accept-eula: true to accept it."
+          exit 2
+        fi
+        if [ -z "$MINECRAFT_VERSION" ]; then
+          echo "::error::minecraft-version is required."
+          exit 2
+        fi
+        if [ -z "$SCENARIO" ] && [ -z "$SCENARIO_FILE" ]; then
+          echo "::error::Set either scenario or scenario-file."
+          exit 2
+        fi
+        if [ -n "$SCENARIO" ] && [ -n "$SCENARIO_FILE" ]; then
+          echo "::error::Set only one of scenario and scenario-file."
+          exit 2
+        fi
+        # 入力の既定値から別の入力を参照できないため、成果物名はここで決める
+        if [ -z "$ARTIFACT_NAME" ]; then
+          ARTIFACT_NAME="fukurou-paper-$MINECRAFT_VERSION"
+        fi
+        # 入力の既定値でのコンテキストの展開に頼らず、ランナーの一時ディレクトリをここで既定値にする
+        WORK_DIR="${WORK_DIR:-$RUNNER_TEMP/fukurou-work}"
+        OUT_DIR="${OUT_DIR:-$RUNNER_TEMP/fukurou-out}"
+        {
+          echo "artifact-name=$ARTIFACT_NAME"
+          echo "work-dir=$WORK_DIR"
+          echo "out-dir=$OUT_DIR"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Install the virtual display and client dependencies
+      if: inputs.skip-system-deps != 'true'
+      shell: bash
+      run: |
+        # GPU の無いランナーで Mesa のソフトウェアレンダリングを使うための描画・音声ライブラリも入れる
+        sudo apt-get update
+        sudo apt-get install --no-install-recommends -y \
+          xvfb xdotool \
+          libgl1 libgl1-mesa-dri libglx-mesa0 libegl1 libopenal1 \
+          libxrandr2 libxinerama1 libxcursor1 libxi6
+
+    - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      # 既定では利用者のリポジトリを見て uv の版とキャッシュキーを決めてしまうため、fukurou 自身を基準にする
+      with:
+        version: "0.12.18"
+        working-directory: ${{ github.action_path }}
+        cache-dependency-glob: uv.lock
+        cache-suffix: fukurou
+        ignore-empty-workdir: "true"
+
+    - name: Determine the Java version for the server
+      id: java
+      shell: bash
+      env:
+        JAVA_VERSION_INPUT: ${{ inputs.java-version }}
+        MINECRAFT_VERSION: ${{ inputs.minecraft-version }}
+        PLUGINS_DIR: ${{ inputs.plugins-dir }}
+        PLUGINS: ${{ inputs.plugins }}
+      run: |
+        # auto のときは Mojang の要求とプラグインのクラスファイルの版から決める（Java 自体は不要）
+        if [ "$JAVA_VERSION_INPUT" = "auto" ]; then
+          version="$(uv run --frozen --no-dev --project "$GITHUB_ACTION_PATH" fukurou java \
+            --minecraft-version "$MINECRAFT_VERSION" \
+            --plugins-dir "$PLUGINS_DIR" \
+            --plugins="$PLUGINS")"
+        else
+          version="$JAVA_VERSION_INPUT"
+        fi
+        echo "Java for the server: $version"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/setup-java@v6
+      with:
+        distribution: temurin
+        java-version: ${{ steps.java.outputs.version }}
+
+    # PortableMC 本体と Mojang のアセット・ランタイムは大きいので、バージョンごとにキャッシュする
+    - uses: actions/cache@v5
+      with:
+        path: |
+          ${{ steps.prepare.outputs.work-dir }}/tools
+          ${{ steps.prepare.outputs.work-dir }}/cache
+        key: fukurou-portablemc-5.0.4-${{ runner.os }}-${{ inputs.minecraft-version }}
+        # アセットはバージョン間で共有されるため、別バージョンのキャッシュからでも復元する
+        restore-keys: |
+          fukurou-portablemc-5.0.4-${{ runner.os }}-
+
+    - name: Run the in-game scenario
+      id: run
+      # 失敗しても成果物のアップロードと outputs の設定を続け、最後のステップで失敗させる
+      continue-on-error: true
+      shell: bash
+      env:
+        # GPU の無いランナーで Mesa のソフトウェアレンダリングを使う
+        LIBGL_ALWAYS_SOFTWARE: "true"
+        # github: 形式の依存プラグインを GitHub API から取得するときに使う
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        MINECRAFT_VERSION: ${{ inputs.minecraft-version }}
+        SCENARIO: ${{ inputs.scenario }}
+        SCENARIO_FILE: ${{ inputs.scenario-file }}
+        PLUGINS_DIR: ${{ inputs.plugins-dir }}
+        PLUGINS: ${{ inputs.plugins }}
+        DEPENDENCIES: ${{ inputs.dependencies }}
+        SERVER_PROPERTIES: ${{ inputs.server-properties }}
+        SERVER_FILES: ${{ inputs.server-files }}
+        SERVER_BUILD: ${{ inputs.server-build }}
+        WORK_DIR: ${{ steps.prepare.outputs.work-dir }}
+        OUT_DIR: ${{ steps.prepare.outputs.out-dir }}
+      run: |
+        # 複数行の入力も壊れないよう、引数は配列に積んでそのまま渡す
+        # 値が "-" で始まってもオプションと誤認されないよう、自由記述の値は --name=value の形で渡す
+        args=(
+          run
+          --accept-eula
+          --minecraft-version "$MINECRAFT_VERSION"
+          --plugins-dir "$PLUGINS_DIR"
+          --plugins="$PLUGINS"
+          --java "$JAVA_HOME/bin/java"
+          --work-dir "$WORK_DIR"
+          --out-dir "$OUT_DIR"
+        )
+        if [ -n "$SCENARIO_FILE" ]; then
+          args+=(--scenario-file "$SCENARIO_FILE")
+        else
+          args+=(--scenario="$SCENARIO")
+        fi
+        if [ -n "$DEPENDENCIES" ]; then
+          args+=(--dependencies="$DEPENDENCIES")
+        fi
+        if [ -n "$SERVER_PROPERTIES" ]; then
+          args+=(--server-properties="$SERVER_PROPERTIES")
+        fi
+        if [ -n "$SERVER_FILES" ]; then
+          args+=(--server-files "$SERVER_FILES")
+        fi
+        if [ -n "$SERVER_BUILD" ]; then
+          args+=(--server-build "$SERVER_BUILD")
+        fi
+        uv run --frozen --no-dev --project "$GITHUB_ACTION_PATH" fukurou "${args[@]}"
+
+    # サーバーやクライアントの本体・アセットは out-dir に含まれないため、そのままアップロードしてよい
+    - name: Upload screenshots, logs and result.json
+      # 途中のセットアップが失敗しても、書けた分の結果は残す
+      if: always() && steps.prepare.outcome == 'success' && inputs.upload-artifact == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ steps.prepare.outputs.artifact-name }}
+        path: ${{ steps.prepare.outputs.out-dir }}
+        if-no-files-found: warn
+        retention-days: ${{ inputs.retention-days }}
+        overwrite: true
+
+    - name: Set outputs
+      id: outputs
+      if: always() && steps.prepare.outcome == 'success'
+      shell: bash
+      env:
+        RESULT_FILE: ${{ steps.prepare.outputs.out-dir }}/result.json
+      run: |
+        # 引数の解析前に失敗すると result.json が無いため、その場合は error として扱う
+        result="$(python3 -c '
+        import json, sys
+        try:
+            with open(sys.argv[1], encoding="utf-8") as file:
+                status = json.load(file).get("status")
+        except (OSError, ValueError, AttributeError):
+            status = None
+        print(status if status in ("passed", "failed", "error") else "error")
+        ' "$RESULT_FILE")"
+        echo "fukurou result: $result"
+        {
+          echo "result=$result"
+          echo "result-file=$RESULT_FILE"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Fail if the scenario did not pass
+      if: always() && steps.prepare.outcome == 'success' && steps.run.outcome != 'success'
+      shell: bash
+      env:
+        RESULT: ${{ steps.outputs.outputs.result }}
+      run: |
+        echo "::error::fukurou run did not pass (result: $RESULT)."
+        exit 1

@@ -1,15 +1,15 @@
 # Results contract
 
-This is the only interface between the test runner (`hukurou`) and the viewer (`hukurou/ui`). Both live in this repository and are released together under one tag.
+This is the only interface between the test runner (`fukurou`) and the viewer (`fukurou/ui`). Both live in this repository and are released together under one tag.
 
 ## 1. Per-version output directory (one artifact per Minecraft version)
 
-`hukurou run` writes everything under `--out-dir`. The action uploads that directory as the artifact `<artifact-prefix>-<server>-<minecraft version>` (for example `hukurou-paper-1.21.11`). It is uploaded even when the run fails.
+`fukurou run` writes everything under `--out-dir`. The action uploads that directory as the artifact `<artifact-prefix>-<server>-<minecraft version>` (for example `fukurou-paper-1.21.11`). It is uploaded even when the run fails.
 
 ```
 result.json                          # always written, also on failure (status "error" for infrastructure failures)
 screenshots/<player>/<name>.png
-logs/harness.log                     # hukurou's own output
+logs/harness.log                     # fukurou's own output
 logs/server.log                      # the server's logs/latest.log
 logs/clients/<player>.log            # each client's logs/latest.log
 crash-reports/<player>/*.txt         # only when a client crashed
@@ -19,14 +19,14 @@ Never included: server jars, client jars, assets, Java runtimes, worlds.
 
 ## 2. `result.json` (schemaVersion 1)
 
-Defined by the pydantic model `hukurou.result.model.ResultV1`. The generated JSON Schema lives at `schema/result.v1.json` (`hukurou schema result`). Keys are camelCase.
+Defined by the pydantic model `fukurou.result.model.ResultV1`. The generated JSON Schema lives at `schema/result.v1.json` (`fukurou schema result`). Keys are camelCase.
 
 ```json
 {
   "schemaVersion": 1,
   "id": "paper-1.21.11",
   "status": "passed",
-  "hukurou": { "version": "0.1.0", "portablemc": "5.0.4" },
+  "fukurou": { "version": "0.1.0", "portablemc": "5.0.4" },
   "minecraft": { "version": "1.21.11", "server": "paper", "build": 130, "channel": "STABLE" },
   "java": { "server": 25 },
   "scenario": { "name": "stamp-thinking-face", "source": "file:game-test/scenarios/stamp-thinking-face.json", "sha256": "..." },
@@ -56,14 +56,14 @@ Defined by the pydantic model `hukurou.result.model.ResultV1`. The generated JSO
 
 Compatibility: adding fields is backwards compatible and the viewer ignores unknown fields. Removing or changing the meaning of a field bumps `schemaVersion`. The viewer shows runs with an unsupported `schemaVersion` as "unsupported" instead of breaking the page.
 
-## 3. Site (written by `hukurou/ui`)
+## 3. Site (written by `fukurou/ui`)
 
 `ui/scripts/build_manifest.py --artifacts-dir <dir> --out <site>` collects `<dir>/<artifact>/result.json` and writes:
 
 ```
 index.html, assets/*                 # prebuilt viewer copied from ui/dist (relative base, hash routing)
 manifest.json                        # schema below
-manifest.js                          # window.__HUKUROU_MANIFEST__ = {...}; loaded as a classic script so file:// works
+manifest.js                          # window.__FUKUROU_MANIFEST__ = {...}; loaded as a classic script so file:// works
 runs/<id>/result.json
 runs/<id>/screenshots/<player>/<name>.png
 runs/<id>/logs/...                   # only when include-logs is true
@@ -75,7 +75,7 @@ runs/<id>/crash-reports/...          # only when include-logs is true
 ```json
 {
   "schemaVersion": 1,
-  "generator": { "name": "hukurou-ui", "version": "0.1.0" },
+  "generator": { "name": "fukurou-ui", "version": "0.1.0" },
   "generatedAt": "2026-09-24T03:10:00Z",
   "title": "MineStamp abc1234",
   "ci": { "repository": "morinoparty/MineStamp", "sha": "...", "runId": "123", "runUrl": "https://github.com/morinoparty/MineStamp/actions/runs/123" },
@@ -85,13 +85,13 @@ runs/<id>/crash-reports/...          # only when include-logs is true
   "runs": [
     {
       "id": "paper-1.21.11",
-      "artifact": "hukurou-paper-1.21.11",
+      "artifact": "fukurou-paper-1.21.11",
       "base": "runs/paper-1.21.11/",
       "status": "passed",
       "result": { "...": "the whole result.json, embedded" }
     }
   ],
-  "warnings": ["hukurou-paper-1.21.7: result.json missing (job cancelled?)"]
+  "warnings": ["fukurou-paper-1.21.7: result.json missing (job cancelled?)"]
 }
 ```
 

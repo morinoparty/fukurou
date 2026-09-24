@@ -1,0 +1,171 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Run the unit tests
+        run: uv run --frozen pytest
+
+      - name: Check that the committed JSON Schemas match the models
+        run: |
+          # 生成した JSON Schema がコミット済みのものとずれていないかを確かめる
+          mkdir -p schema
+          uv run --frozen fukurou schema result > schema/result.v1.json
+          if [ -f schema/scenario.v1.json ]; then
+            uv run --frozen fukurou schema scenario > schema/scenario.v1.json
+          fi
+          # 未追跡の新規ファイルも差分として検出できるよう intent-to-add にしてから比べる
+          git add -N -- schema
+          git diff --exit-code -- schema
+
+  ui:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Test the manifest builder
+        run: python3 -m unittest ui/scripts/test_build_manifest.py
+
+      # pnpm/action-setup はリポジトリ直下の package.json しか読まないため、
+      # ui/viewer/package.json の packageManager を明示的に読ませて lockfile・ui/dist と同じ pnpm を使う
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: ui/viewer/package.json
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: ui/viewer/pnpm-lock.yaml
+
+      - name: Install, type-check and build the viewer
+        working-directory: ui/viewer
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run typecheck
+          pnpm run build
+
+      - name: Check that the committed ui/dist is up to date
+        # ui/dist はアクションから直接使うためコミットしている。ビルド結果と一致しなければ失敗させる
+        run: |
+          # ハッシュ付きの新しいアセットのような未追跡ファイルも検出する
+          git add -N -- ui/dist
+          git diff --exit-code -- ui/dist
+
+  versions:
+    runs-on: ubuntu-24.04
+    outputs:
+      all: ${{ steps.all.outputs.matrix }}
+      smoke: ${{ steps.smoke.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # 範囲指定の解決が動くことだけを確かめる（実際のゲーム起動は latest のみで行う）
+      - uses: ./versions
+        id: all
+        with:
+          minecraft-version: 1.21.6-
+
+      - uses: ./versions
+        id: smoke
+        with:
+          minecraft-version: latest
+
+      - name: Check the resolved matrices
+        env:
+          ALL: ${{ steps.all.outputs.matrix }}
+          SMOKE: ${{ steps.smoke.outputs.matrix }}
+        run: |
+          python3 -c '
+          import json, sys
+          all_versions, smoke = json.loads(sys.argv[1]), json.loads(sys.argv[2])
+          assert isinstance(all_versions, list) and all_versions, all_versions
+          assert isinstance(smoke, list) and len(smoke) == 1, smoke
+          ' "$ALL" "$SMOKE"
+
+  smoke:
+    name: Smoke test (Minecraft ${{ matrix.minecraft-version }})
+    needs: versions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        minecraft-version: ${{ fromJSON(needs.versions.outputs.smoke) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # プラグイン無しの素の Paper で、サーバー起動・参加・スクリーンショットまで通ることを確かめる
+      - uses: ./
+        id: fukurou
+        with:
+          accept-eula: "true"
+          minecraft-version: ${{ matrix.minecraft-version }}
+          scenario-file: examples/smoke.json
+          plugins: ""
+
+      - name: Check the outputs
+        if: always()
+        env:
+          RESULT: ${{ steps.fukurou.outputs.result }}
+          RESULT_FILE: ${{ steps.fukurou.outputs.result-file }}
+          ARTIFACT_NAME: ${{ steps.fukurou.outputs.artifact-name }}
+        run: |
+          echo "result=$RESULT artifact=$ARTIFACT_NAME"
+          test -f "$RESULT_FILE"
+          test "$RESULT" = "passed"
+
+  ui-smoke:
+    needs: smoke
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # smoke の成果物からサイトを組み立てられることだけを確かめる（アップロードはしない）
+      - uses: ./ui
+        id: site
+        with:
+          upload: "false"
+
+      - name: Check the generated site
+        env:
+          SITE_DIR: ${{ steps.site.outputs.site-dir }}
+        run: |
+          test -f "$SITE_DIR/index.html"
+          test -f "$SITE_DIR/manifest.json"
+          # smoke は latest の1バージョンだけなので、download-artifact が平置きにした1件の artifact を
+          # build_manifest.py が1つの run として読めていること（result が埋め込まれていること）まで確かめる
+          python3 -c '
+          import json, sys
+          manifest = json.load(open(sys.argv[1]))
+          print(manifest["summary"])
+          assert manifest["summary"]["total"] == 1, manifest["summary"]
+          assert manifest["runs"][0]["result"] is not None, manifest["warnings"]
+          ' "$SITE_DIR/manifest.json"

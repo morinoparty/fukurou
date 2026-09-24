@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "id": "paper-1.21.11",
+  "status": "failed",
+  "fukurou": {
+    "version": "0.1.0",
+    "portablemc": "5.0.4"
+  },
+  "minecraft": {
+    "version": "1.21.11",
+    "server": "paper",
+    "build": 128,
+    "channel": "STABLE"
+  },
+  "java": {
+    "server": 21
+  },
+  "scenario": {
+    "name": "stamp-thinking-face",
+    "source": "file:game-test/scenarios/stamp-thinking-face.json",
+    "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "plugins": [
+    {
+      "file": "MineStamp-all.jar",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "name": "MineStamp",
+      "version": "1.0",
+      "role": "under-test",
+      "classFileMajor": 65,
+      "enabled": true
+    }
+  ],
+  "players": [
+    {
+      "name": "Alice",
+      "op": true,
+      "joined": true
+    },
+    {
+      "name": "Bob",
+      "op": false,
+      "joined": true
+    }
+  ],
+  "ci": {
+    "repository": "morinoparty/MineStamp",
+    "sha": "abc1234def5678abc1234def5678abc1234def56",
+    "ref": "refs/pull/177/merge",
+    "runId": "123",
+    "runAttempt": "1",
+    "serverUrl": "https://github.com"
+  },
+  "steps": [
+    {
+      "index": 0,
+      "on": "server",
+      "action": "command",
+      "label": "time set noon",
+      "status": "passed",
+      "durationMs": 11
+    },
+    {
+      "index": 1,
+      "on": "Alice",
+      "action": "chat",
+      "label": ":thinking_face:",
+      "status": "passed",
+      "durationMs": 310
+    },
+    {
+      "index": 2,
+      "on": "server",
+      "action": "wait_for_log",
+      "label": "Stamp sent",
+      "status": "failed",
+      "durationMs": 30000,
+      "error": "Timed out after 30s waiting for server log matching 'Stamp sent'"
+    },
+    {
+      "index": 3,
+      "on": "Alice",
+      "action": "screenshot",
+      "label": "stamp-thinking-face",
+      "status": "skipped"
+    },
+    {
+      "index": 4,
+      "on": "Bob",
+      "action": "screenshot",
+      "label": "stamp-thinking-face",
+      "status": "skipped"
+    }
+  ],
+  "failure": {
+    "phase": "scenario",
+    "message": "Timed out after 30s waiting for server log matching 'Stamp sent'",
+    "stepIndex": 2
+  },
+  "screenshots": [
+    {
+      "player": "Alice",
+      "name": "failure",
+      "path": "screenshots/Alice/failure.png",
+      "width": 32,
+      "height": 18,
+      "stepIndex": 2
+    }
+  ],
+  "logs": [
+    {
+      "kind": "harness",
+      "path": "logs/harness.log"
+    },
+    {
+      "kind": "server",
+      "path": "logs/server.log"
+    },
+    {
+      "kind": "client",
+      "player": "Alice",
+      "path": "logs/clients/Alice.log"
+    },
+    {
+      "kind": "client",
+      "player": "Bob",
+      "path": "logs/clients/Bob.log"
+    }
+  ],
+  "startedAt": "2026-09-24T03:00:05Z",
+  "finishedAt": "2026-09-24T03:04:40Z",
+  "durationMs": 275000
+}
