@@ -15,6 +15,7 @@ from typing import Literal
 from pydantic import ValidationError
 
 from fukurou.errors import InvalidInputError
+from fukurou.scenario.expansion import ExpandedStep, ParallelPosition, RepeatPosition, StepExpander
 from fukurou.scenario.loader import ScenarioSource, parse_document
 from fukurou.scenario.model import (
     Isolation,
@@ -24,6 +25,7 @@ from fukurou.scenario.model import (
     Step,
     check_screenshots,
     check_step_targets,
+    expand_steps,
 )
 from fukurou.scenario.player_actions import PlayerAction
 from fukurou.scenario.suite import Suite
@@ -64,7 +66,12 @@ class Selection:
 
 @dataclass(frozen=True)
 class PlannedStep:
-    """展開済みの 1 ステップ。beforeEach → fixture → テスト自身の順に並ぶ。"""
+    """展開済みの 1 ステップ。beforeEach → fixture → テスト自身の順に並ぶ。
+
+    step はブロック（parallel / repeat）を含まない単独のアクションで、プレイヤー向けなら on は 1 人の名前。
+    同じ parallel.block を持つステップは計画順で連続しており、ランナーはそれを 1 つのブロックとして
+    lane ごとに（lane の中は計画順に）同時に実行する。
+    """
 
     phase: StepPhase
     # phase が fixture のときだけ fixture の名前
@@ -73,6 +80,10 @@ class PlannedStep:
     # fixture / beforeEach のステップがこのテストに参加しないプレイヤーを対象にしている場合の理由。
     # ランナーはこのステップを実行せず skipped（error にこの文字列）として記録する
     skip_reason: str | None = None
+    # parallel ブロックの中のステップなら、そのブロック（テスト内の通し番号）とレーン
+    parallel: ParallelPosition | None = None
+    # repeat ブロックの中のステップなら、外側から順に何回目か
+    repeat: tuple[RepeatPosition, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -254,9 +265,14 @@ def _check_suite_targets(suite: Suite | None, known: set[str], errors: list[str]
         return
     groups = [("beforeEach", suite.before_each), *((f"fixture {name!r}", steps) for name, steps in suite.fixtures.items())]
     for label, steps in groups:
-        for index, step in enumerate(steps):
-            if isinstance(step, PlayerAction) and step.on not in known:
-                errors.append(f"suite {label} step {index}: player {step.on!r} is not declared in any players")
+        # 複数プレイヤーの on やブロックの中のステップも見るため、展開した後のステップで確かめる
+        for item in expand_steps(steps):
+            if not isinstance(item.step, PlayerAction) or item.step.on in known:
+                continue
+            message = f"suite {label} {item.location}: player {item.step.on!r} is not declared in any players"
+            # repeat の繰り返しごとに同じ位置が並ぶので、同じ問題は 1 回だけ報告する
+            if message not in errors:
+                errors.append(message)
 
 
 def _expand(source: ScenarioSource, scenario: Scenario, suite: Suite | None, isolation: Isolation | None) -> TestSpec:
@@ -266,17 +282,20 @@ def _expand(source: ScenarioSource, scenario: Scenario, suite: Suite | None, iso
     if not players:
         raise ValueError("no players: declare players in the scenario or in the suite")
     names = {player.name for player in players}
-    check_step_targets(scenario.steps, names)
+    # 対象の誤りは fixture の誤りより先に報告する（従来と同じ順）
+    check_step_targets(expand_steps(scenario.steps), names)
 
+    # ブロック番号とステップ数の上限を beforeEach・fixture・テスト自身のステップで通すため、展開器は 1 つにする
+    expander = StepExpander()
     steps: list[PlannedStep] = []
     if suite is not None:
-        steps.extend(_plan("beforeEach", None, suite.before_each, names))
+        steps.extend(_plan("beforeEach", None, expander.expand(suite.before_each), names))
     for fixture in scenario.use:
         if suite is None or fixture not in suite.fixtures:
             defined = ", ".join(suite.fixtures) if suite is not None and suite.fixtures else "none"
             raise ValueError(f"unknown fixture {fixture!r} in use (defined: {defined})")
-        steps.extend(_plan("fixture", fixture, suite.fixtures[fixture], names))
-    steps.extend(PlannedStep(phase="test", fixture=None, step=step) for step in scenario.steps)
+        steps.extend(_plan("fixture", fixture, expander.expand(suite.fixtures[fixture]), names))
+    steps.extend(_planned("test", None, item) for item in expander.expand(scenario.steps))
     # fixture とテストのスクリーンショット名が衝突しないか、実行されるステップだけで確かめる
     check_screenshots([planned.step for planned in steps if planned.skip_reason is None])
 
@@ -297,13 +316,29 @@ def _expand(source: ScenarioSource, scenario: Scenario, suite: Suite | None, iso
     )
 
 
-def _plan(phase: StepPhase, fixture: str | None, steps: list[Step], names: set[str]) -> list[PlannedStep]:
-    """共有のステップ列を展開する。このテストに居ないプレイヤー向けのステップには理由を付けて残す。"""
+def _plan(phase: StepPhase, fixture: str | None, expanded: list[ExpandedStep], names: set[str]) -> list[PlannedStep]:
+    """共有のステップ列（展開済み）を計画に加える。このテストに居ないプレイヤー向けのステップには理由を付けて残す。
+
+    展開後のステップごとに判定するため、parallel の子や複数プレイヤーの on のうち、居ないプレイヤーの分だけが飛ぶ。
+    """
     planned = []
-    for step in steps:
+    for item in expanded:
+        step = item.step
         skip = f"player {step.on} is not in this test" if isinstance(step, PlayerAction) and step.on not in names else None
-        planned.append(PlannedStep(phase=phase, fixture=fixture, step=step, skip_reason=skip))
+        planned.append(_planned(phase, fixture, item, skip))
     return planned
+
+
+def _planned(phase: StepPhase, fixture: str | None, item: ExpandedStep, skip_reason: str | None = None) -> PlannedStep:
+    """展開後のステップに、層とブロック内の位置を付けて PlannedStep にする。"""
+    return PlannedStep(
+        phase=phase,
+        fixture=fixture,
+        step=item.step,
+        skip_reason=skip_reason,
+        parallel=item.parallel,
+        repeat=item.repeat,
+    )
 
 
 def _matches(test: TestSpec, selection: Selection) -> bool:

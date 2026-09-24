@@ -14,7 +14,9 @@ from pydantic import (
     model_validator,
 )
 
+from fukurou.scenario.blocks import Parallel, Repeat
 from fukurou.scenario.common import SERVER_TARGET, NonEmptyStr, PlayerName, Wait
+from fukurou.scenario.expansion import ExpandedStep, StepExpander
 from fukurou.scenario.player_actions import AnyPlayerAction, PlayerAction, Screenshot
 from fukurou.scenario.server_actions import AnyServerAction
 from fukurou.versions import VersionError, parse_spec
@@ -47,14 +49,23 @@ def _step_target(step: Any) -> str:
     on = step.get("on") if isinstance(step, dict) else getattr(step, "on", None)
     if on is None:
         return "common"
+    # on がプレイヤー名の一覧（複数プレイヤーの略記）の場合もプレイヤーのアクション
     return "server" if on == SERVER_TARGET else "player"
 
 
-# on が無ければ共通アクション、"server" ならサーバー、それ以外はプレイヤーのアクションとして検証する
+# on を持たないステップ。wait と、ステップを束ねるブロック（parallel / repeat）を action で見分ける
+AnyCommonStep = Annotated[Wait | Parallel | Repeat, Field(discriminator="action")]
+
+# on が無ければ共通アクション・ブロック、"server" ならサーバー、それ以外はプレイヤーのアクションとして検証する
 Step = Annotated[
-    Annotated[Wait, Tag("common")] | Annotated[AnyServerAction, Tag("server")] | Annotated[AnyPlayerAction, Tag("player")],
+    Annotated[AnyCommonStep, Tag("common")]
+    | Annotated[AnyServerAction, Tag("server")]
+    | Annotated[AnyPlayerAction, Tag("player")],
     Discriminator(_step_target),
 ]
+# ブロックの steps は Step を再帰的に参照するので、Step を定義した後に解決する
+Parallel.model_rebuild(_types_namespace={"Step": Step})
+Repeat.model_rebuild(_types_namespace={"Step": Step})
 
 
 class Scenario(BaseModel):
@@ -95,10 +106,12 @@ class Scenario(BaseModel):
 
     @model_validator(mode="after")
     def _check_references(self) -> "Scenario":
+        # ブロックの規則（入れ子・上限・プレースホルダー）は展開して確かめる。fixture を含めた上限は discovery で見る
+        expanded = expand_steps(self.steps)
         if self.players is not None:
             check_players(self.players)
-            check_step_targets(self.steps, {player.name for player in self.players})
-        check_screenshots(self.steps)
+            check_step_targets(expanded, {player.name for player in self.players})
+        check_screenshots([item.step for item in expanded])
         return self
 
 
@@ -111,15 +124,20 @@ def check_players(players: list[PlayerSpec]) -> None:
         raise ValueError(f"{SERVER_TARGET!r} is reserved and cannot be a player name")
 
 
-def check_step_targets(steps: list[Any], names: set[str]) -> None:
-    """プレイヤー向けのステップが、宣言されたプレイヤーだけを対象にしているかを確かめる。"""
-    for index, step in enumerate(steps):
-        if isinstance(step, PlayerAction) and step.on not in names:
-            raise ValueError(f"step {index}: player {step.on!r} is not declared in players")
+def expand_steps(steps: list[Any]) -> list[ExpandedStep]:
+    """1 つのステップ列だけを展開する（ブロック番号はこの列の中の通し番号）。"""
+    return StepExpander().expand(steps)
+
+
+def check_step_targets(expanded: list[ExpandedStep], names: set[str]) -> None:
+    """展開後のプレイヤー向けのステップが、宣言されたプレイヤーだけを対象にしているかを確かめる。"""
+    for item in expanded:
+        if isinstance(item.step, PlayerAction) and item.step.on not in names:
+            raise ValueError(f"{item.location}: player {item.step.on!r} is not declared in players")
 
 
 def check_screenshots(steps: list[Any]) -> None:
-    """スクリーンショット名の重複と、失敗時の画面に予約した名前の使用を弾く。"""
+    """スクリーンショット名の重複と、失敗時の画面に予約した名前の使用を弾く。steps は展開後のステップ。"""
     # スクリーンショットはプレイヤーごとのディレクトリに保存するため、同じプレイヤー内で重複を弾く
     shots = [(step.on, step.name) for step in steps if isinstance(step, Screenshot)]
     duplicates = sorted({f"{on}/{name}" for on, name in shots if shots.count((on, name)) > 1})

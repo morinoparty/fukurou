@@ -121,6 +121,7 @@ Defined by the pydantic model `fukurou.result.model.ResultV2`. The generated JSO
   - otherwise `failed` when any test is `failed` or `error`.
   - otherwise `passed` (`skipped` tests count as success).
 - `summary` counts `tests[].status`.
+- `minecraft` is `{ "version", "server", "build", "channel" }`. `build` is the Paper build number and `channel` is the channel of that build as Paper reports it: `STABLE`, `BETA` or `ALPHA`. A run uses the newest build whose channel is at least as stable as `--paper-channel` (default `stable`), so `channel` is `BETA` or `ALPHA` only when the run allowed it, or when `--server-build` named such a build (fukurou logs a warning then). `build` and `channel` are `null` when the run failed before a build was picked. The viewer shows a small `alpha` / `beta` badge next to the version of a non-`STABLE` run.
 - `suite` describes the suite file (`source` / `sha256` are `null` when the run used only `--scenario-file` / `--scenario`) and the reset settings that applied. `arena` is `{ "size", "height" }`, or `false` when the arena reset is disabled. `suite` is `null` only when the run failed before the tests were discovered.
 - `selection` records the filters: `--test` ids or globs (`tests`), `--tag` (`tags`), a forced `--isolation`, and `--fail-fast`. Empty lists mean "no filter".
 - `players` is the union of all tests' players, joined once per session. `op` is per test (`tests[].players[].op`).
@@ -142,6 +143,36 @@ Defined by the pydantic model `fukurou.result.model.ResultV2`. The generated JSO
 - `steps[]` are expanded in the order `beforeEach` → `use` fixtures → the test's own steps. `phase` is `beforeEach`, `fixture` or `test`. `fixture` is the fixture name when `phase` is `fixture`, else `null`. `index` is the position in this test's `steps`. After the first failed step the remaining steps are `skipped`. A `beforeEach` or fixture step aimed at a player outside the test is `skipped` with `error: "player Bob is not in this test"`.
 - `screenshots[]` live under `tests/<id>/screenshots/<player>/<name>.png`. Names are unique per player within a test. The name `failure` is reserved for the screenshot fukurou takes of every player of the test when it fails.
 - `logRanges` maps a log path (as listed in `sessions[].logs`) to the lines written while the test ran: `{ "from", "to" }`, 1-based and inclusive. The range starts at the harness reset, so the reset's own console output (the RCON replies) is included as a clue for `reset.error`; the test's `wait_for_log` / `assert_no_log` steps only match lines written after the reset finished. Paths are the keys because a relaunched client writes to a new file. It is `null` when the test did not run.
+
+### Parallel and repeat blocks (fukurou 2.1)
+
+fukurou 2.1 adds three ways to write steps: `{"action": "parallel", "steps": [...]}` runs its children at the same time, `{"action": "repeat", "times": N, "as": "i", "steps": [...]}` runs its steps N times, and a player action may name several players (`"on": ["Alice", "Bob"]`), which is a `parallel` block with one copy per player. The blocks are expanded when the tests are planned, so `result.json` keeps `schemaVersion: 2` and lists only the expanded steps. The blocks themselves have no entries.
+
+Every entry of `tests[].steps` gets these optional fields. Runners older than 2.1 do not write them, and a reader treats a missing field as `null`:
+
+```json
+{ "index": 7, "phase": "test", "fixture": null, "on": "Bob", "action": "screenshot", "label": "shot-2", "status": "passed",
+  "durationMs": 1800, "error": null, "screenshot": "tests/greeting/screenshots/Bob/shot-2.png",
+  "parallel": { "block": 1, "lane": 1 },
+  "repeat": [ { "block": 0, "iteration": 2, "of": 3 } ],
+  "startedAt": "2026-09-24T03:02:14.120Z", "finishedAt": "2026-09-24T03:02:15.920Z" }
+```
+
+- `parallel` is `{ "block", "lane" }` for a step inside a parallel block, else `null`. `block` numbers the parallel blocks of the test from 0 in plan order, across `beforeEach`, fixtures and the test's own steps. Each expanded copy is a separate block, so a parallel block inside a `repeat` of 3 gives 3 blocks. `lane` is the child's position in the block from 0. A child with several players in `on` takes one lane per player. The steps of one block are next to each other in `steps`, lane 0 first. Lanes run at the same time, and the steps of one lane (a `repeat` child) run one after another.
+- `repeat` is the list of enclosing repeat blocks, outermost first, or `null` outside any repeat. Each item is `{ "block", "iteration", "of" }`: `block` numbers the repeat blocks of the test from 0 in plan order (an inner repeat gets a new number for every iteration of the outer one), `iteration` counts from 1, and `of` is `times`. The list is never empty.
+- `startedAt` / `finishedAt` are ISO 8601 UTC timestamps of the step's run, or `null` when it did not run. The `durationMs` of steps in one parallel block overlap, and these timestamps show by how much.
+- `index` stays the position in `steps` (plan order), so `failure.stepIndex` and `screenshots[].stepIndex` still point into it.
+- A parallel block fails when any of its children fails. Children that were already running finish and keep their own `status`. The steps after the block are `skipped` as usual. When several children fail, `failure` is the one that failed first in time (a client that died in one lane can be reported on a sibling's step, as in sequential runs). If the test's `timeout` passes during a block, the runner stops the lanes: a step that was waiting (`wait`, `wait_for_log`) or still running is recorded as `failed` with an error starting with `the test exceeded its timeout` (its `durationMs` may be `null` when the lane did not return in time), steps not started stay `skipped`, and the test is `error` with `failure.phase: "timeout"` as before, unless a child had already failed: then that earlier failure is kept and the cut-short steps still carry the timeout error. If the server dies in one lane, the waiting siblings are cut short with an error starting with `cancelled:` and the run fails with phase `server`.
+- A `beforeEach` or fixture step for a player outside the test is skipped one expanded step at a time. For `"on": ["Alice", "Bob"]` in a test without Bob, only Bob's copy is `skipped` with `error: "player Bob is not in this test"`.
+- Screenshot names are checked after expansion and are still unique per player within a test. The same `name` for several players in one `on` list is fine because screenshots are stored per player.
+
+The scenario rules (checked by `fukurou validate` before anything starts):
+
+- `parallel`: 1 to 16 children after expansion. A `parallel` cannot contain another `parallel`, either directly or inside a `repeat` child, and a step with several players in `on` counts as a parallel block. A step with several players in `on` written directly as a child of `parallel` adds one lane per player instead. Two children must not both send client input (`press_key`, `type_text`, `chat`, `screenshot`) to the same player. Server actions, `wait`, `wait_for_log` and `assert_no_log` may appear in several children.
+- `repeat`: `times` is 1 to 100 and `as` matches `^[a-z][a-z0-9_]*$` (default `i`). In the `text`, `command`, `pattern`, `name` and `key` of the steps inside, `${i}` becomes the iteration number counted from 1 and `${i0}` the number counted from 0. A placeholder whose name is not defined by an enclosing repeat is an error. A nested repeat must use a different `as` (and `i0` clashes with an outer `i`). Outside a repeat, `${...}` in these fields is an error.
+- A test has at most 1000 expanded steps, counting `beforeEach`, fixtures and its own steps.
+
+`fukurou validate` prints the expanded steps under each test, one per line: the index, the phase (or `fixture <name>`), the target, the action, the label, and `[parallel <block> lane <lane>]` / `[repeat <block> <iteration>/<of>]` for steps inside blocks.
 
 ### Compatibility
 

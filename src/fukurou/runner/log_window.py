@@ -6,11 +6,15 @@
 read() は前回読んだ位置から増分だけを読んでテスト内で蓄積する。
 
 行番号も一緒に数えておき、テストの終了時に line_range() で result.json の logRanges にする。
+
+parallel ブロックではサーバーログのウィンドウを複数のレーン（スレッド）が同時に read() するため、
+読み足しとバッファの更新はロックで直列にする。
 """
 
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import threading
 
 from fukurou.result.model import LogRange
 from fukurou.runner.process import ANSI_ESCAPE
@@ -37,17 +41,21 @@ class LogWindow:
         self._mark = _Position()
         # mark() 以降に読んだテキスト
         self._buffer = ""
+        # 複数のスレッドから同時に読まれても、位置とバッファの対応が崩れないようにする
+        self._lock = threading.Lock()
 
     def mark(self) -> None:
         """ここから後をウィンドウにする。ファイルが無ければ先頭から。"""
-        self._catch_up()
-        self._mark = _Position(self._read.offset, self._read.newlines)
-        self._buffer = ""
+        with self._lock:
+            self._catch_up()
+            self._mark = _Position(self._read.offset, self._read.newlines)
+            self._buffer = ""
 
     def read(self) -> str:
         """mark() から現在までのテキストを返す（ANSI のカラーコードは除く）。"""
-        self._catch_up()
-        return self._buffer
+        with self._lock:
+            self._catch_up()
+            return self._buffer
 
     def skip(self) -> None:
         """ここまでに書かれた行を read() の対象から外す。line_range() の始点（mark()）は動かさない。
@@ -55,20 +63,22 @@ class LogWindow:
         ハーネスのリセットのコマンドの応答は logRanges には残したいが、テストの wait_for_log / assert_no_log が
         それに一致してはいけない。リセットの後にこれを呼び、照合の対象をリセットより後の行だけにする。
         """
-        self._catch_up()
-        self._buffer = ""
+        with self._lock:
+            self._catch_up()
+            self._buffer = ""
 
     def line_range(self) -> LogRange | None:
         """mark() から現在までに書かれた行の範囲（1 始まり、両端含む）。1 行も無ければ None。"""
-        self._catch_up()
-        first = self._mark.newlines + 1
-        last = self._read.newlines
+        with self._lock:
+            self._catch_up()
+            first = self._mark.newlines + 1
+            last = self._read.newlines
         if last < first:
             return None
         return LogRange(from_line=first, to=last)
 
     def _catch_up(self) -> None:
-        """前回の位置から最後の改行までを読み、バッファと行数に足す。"""
+        """前回の位置から最後の改行までを読み、バッファと行数に足す。呼び出し側が _lock を持つ。"""
         try:
             with self.path.open("rb") as file:
                 stat = os.fstat(file.fileno())

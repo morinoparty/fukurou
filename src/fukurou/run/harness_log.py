@@ -7,7 +7,8 @@ import sys
 
 ROOT_LOGGER = "fukurou"
 CONSOLE_FORMAT = "[fukurou] %(message)s"
-FILE_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+# parallel ブロックのレーン（スレッド名 lane-<block>-<lane>）からの行を見分けられるよう、ファイルにはスレッド名も残す
+FILE_FORMAT = "%(asctime)s %(levelname)s %(name)s [%(threadName)s]: %(message)s"
 
 
 @contextmanager

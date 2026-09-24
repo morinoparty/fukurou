@@ -65,9 +65,13 @@ inputs:
     required: false
     default: ""
   server-build:
-    description: Paper build number. Defaults to the latest stable build for the version.
+    description: Paper build number. Defaults to the newest build accepted by paper-channel. An explicit build is used even when its channel is less stable (with a warning).
     required: false
     default: ""
+  paper-channel:
+    description: 'Least stable Paper build channel to accept: "stable" (only stable builds), "beta" (beta or stable) or "alpha" (any build). The newest accepted build is used, and the run fails when the version has none.'
+    required: false
+    default: stable
   java-version:
     description: 'Java major version for the server, or "auto" to pick max(the version Mojang requires, the version the plugins are compiled for).'
     required: false
@@ -272,6 +276,7 @@ runs:
         SERVER_PROPERTIES: ${{ inputs.server-properties }}
         SERVER_FILES: ${{ inputs.server-files }}
         SERVER_BUILD: ${{ inputs.server-build }}
+        PAPER_CHANNEL: ${{ inputs.paper-channel }}
         WORK_DIR: ${{ steps.prepare.outputs.work-dir }}
         OUT_DIR: ${{ steps.prepare.outputs.out-dir }}
       run: |
@@ -286,6 +291,7 @@ runs:
           --java "$JAVA_HOME/bin/java"
           --work-dir "$WORK_DIR"
           --out-dir "$OUT_DIR"
+          --paper-channel "$PAPER_CHANNEL"
         )
         if [ -n "$SUITE" ]; then
           args+=(--suite "$SUITE")

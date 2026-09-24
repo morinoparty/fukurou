@@ -4,9 +4,11 @@ import logging
 from pathlib import Path
 import shutil
 import struct
+import threading
 import time
 
 from fukurou.errors import FukurouError
+from fukurou.runner.cancellation import pause
 from fukurou.runner.client import ClientProcess
 from fukurou.runner.process import read_log
 from fukurou.runner.x11_input import MinecraftWindow
@@ -28,6 +30,11 @@ class PlayerSession:
     """プレイヤー1人分のクライアントと、その専用ディスプレイ。
 
     セッションの中で stop() → start() と起動し直せる（dirty / 死亡したクライアントの再起動と fresh-server）。
+
+    待ちのある操作（ウィンドウ探し・チャット欄の開き待ち・撮影の待ち）は stop イベントを受け取れる。
+    parallel のレーンはテストの期限切れで立つイベントを渡し、待ちの途中でも StepCancelled で戻れるようにする
+    （渡さなければ従来どおり上限時間まで待つ）。イベントは保持せず呼び出しごとに受け取る: 期限切れの後の
+    失敗時の撮影や次のテストのリセットが、立ったままのイベントで打ち切られないようにするため。
     """
 
     def __init__(self, name: str, client: ClientProcess, display: VirtualDisplay, window_timeout: float):
@@ -69,21 +76,21 @@ class PlayerSession:
         self.running = True
         self.perspective = 0
 
-    def press_key(self, keysym: str) -> None:
-        self.window().press_key(keysym)
+    def press_key(self, keysym: str, stop: threading.Event | None = None) -> None:
+        self.window(stop).press_key(keysym)
         if keysym == PERSPECTIVE_KEY:
             self.perspective += 1
 
-    def type_text(self, text: str) -> None:
-        self.window().type_text(text)
+    def type_text(self, text: str, stop: threading.Event | None = None) -> None:
+        self.window(stop).type_text(text)
 
-    def chat(self, text: str) -> None:
+    def chat(self, text: str, stop: threading.Event | None = None) -> None:
         """T でチャット欄を開き、入力して送信する。"""
-        self.press_key("t")
+        self.press_key("t", stop)
         # チャット欄が開く前に入力すると先頭の文字が欠けるため、少し待つ
-        time.sleep(0.5)
-        self.type_text(text)
-        self.press_key("Return")
+        pause(0.5, stop)
+        self.type_text(text, stop)
+        self.press_key("Return", stop)
 
     def normalize_view(self) -> None:
         """テストの前にチャット HUD を消し（F3+d）、視点を一人称へ戻す（F5）。ベストエフォート。
@@ -102,20 +109,21 @@ class PlayerSession:
         """クライアントのログ全体を返す。"""
         return read_log(self.latest_log)
 
-    def take_screenshot(self, destination: Path) -> tuple[int, int]:
+    def take_screenshot(self, destination: Path, stop: threading.Event | None = None) -> tuple[int, int]:
         """F2 でスクリーンショットを撮って destination へコピーし、画像の幅と高さを返す。"""
         before = set(self.client.screenshots_dir.glob("*.png"))
-        self.press_key("F2")
-        screenshot = self._wait_for_new_png(before, timeout=15.0)
+        self.press_key("F2", stop)
+        screenshot = self._wait_for_new_png(before, timeout=15.0, stop=stop)
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(screenshot, destination)
         width, height = png_size(destination)
         logger.info("%s: saved %s (%dx%d)", self.name, destination, width, height)
         return width, height
 
-    def window(self) -> MinecraftWindow:
+    def window(self, stop: threading.Event | None = None) -> MinecraftWindow:
+        """クライアントのウィンドウ。最初の呼び出し（と stop() の後）は現れるまで window_timeout だけ待つ。"""
         if self._window is None:
-            self._window = MinecraftWindow.wait_for(self.display.name, self.window_timeout)
+            self._window = MinecraftWindow.wait_for(self.display.name, self.window_timeout, stop=stop)
         return self._window
 
     def check_alive(self) -> None:
@@ -128,18 +136,18 @@ class PlayerSession:
         self._window = None
         self.running = False
 
-    def _wait_for_new_png(self, before: set, timeout: float) -> Path:
-        """新しい PNG が現れ、書き込みが終わる（サイズが変わらなくなる）まで待つ。"""
+    def _wait_for_new_png(self, before: set, timeout: float, stop: threading.Event | None = None) -> Path:
+        """新しい PNG が現れ、書き込みが終わる（サイズが変わらなくなる）まで待つ。stop が立てば StepCancelled。"""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             created = sorted(set(self.client.screenshots_dir.glob("*.png")) - before)
             if created:
                 candidate = created[-1]
                 size = candidate.stat().st_size
-                time.sleep(0.5)
+                pause(0.5, stop)
                 if size > 0 and candidate.stat().st_size == size and _is_png(candidate):
                     return candidate
-            time.sleep(0.25)
+            pause(0.25, stop)
         raise PlayerSessionError(f"{self.name}: no new screenshot was written after pressing F2")
 
 

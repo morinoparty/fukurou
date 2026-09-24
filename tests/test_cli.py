@@ -61,13 +61,35 @@ def test_validate_rejects_invalid_scenarios(tmp_path, capsys):
 
 def test_validate_prints_one_line_per_test_and_reports_problems(suite_dir, capsys):
     assert main(["validate", "--suite", "game-test/fukurou.yml"]) == 0
-    lines = capsys.readouterr().out.splitlines()
+    # テストごとの行の下に、展開後のステップが字下げして並ぶ
+    lines = [line for line in capsys.readouterr().out.splitlines() if not line.startswith(" ")]
     assert [line.split(":")[0] for line in lines] == ["stamp-a", "stamp-b", "fresh"]
     (suite_dir / "game-test" / "scenarios" / "broken.json").write_text('{"steps": []}', encoding="utf-8")
     assert main(["validate", "--suite", "game-test/fukurou.yml"]) == 2
     captured = capsys.readouterr()
-    assert len(captured.out.splitlines()) == 3
+    assert len([line for line in captured.out.splitlines() if not line.startswith(" ")]) == 3
     assert "fukurou: broken: invalid scenario" in captured.err
+
+
+def test_validate_prints_the_expanded_steps(capsys):
+    inline = json.dumps(
+        {
+            "players": [{"name": "Alice"}, {"name": "Bob"}],
+            "steps": [
+                {"action": "repeat", "times": 2, "steps": [{"on": ["Alice", "Bob"], "action": "screenshot", "name": "s${i}"}]},
+                WAIT,
+            ],
+        }
+    )
+    assert main(["validate", "--scenario", inline]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "inline: valid (players: 2, steps: 5, planned steps: 5, isolation: reset)",
+        "    0 test Alice screenshot 's1' [parallel 0 lane 0] [repeat 0 1/2]",
+        "    1 test Bob screenshot 's1' [parallel 0 lane 1] [repeat 0 1/2]",
+        "    2 test Alice screenshot 's2' [parallel 1 lane 0] [repeat 0 2/2]",
+        "    3 test Bob screenshot 's2' [parallel 1 lane 1] [repeat 0 2/2]",
+        "    4 test - wait '1s'",
+    ]
 
 
 def test_list_prints_ids_in_run_order(suite_dir, capsys):
@@ -160,6 +182,29 @@ def test_run_builds_options_and_calls_the_suite_runner(tmp_path, monkeypatch):
     assert options.accept_eula is True
     assert options.work_dir == tmp_path / "work"
     assert options.out_dir == Path("fukurou-out")
+    assert options.paper_channel == "stable"
+
+
+def test_paper_channel_flag_is_parsed_and_validated(monkeypatch, capsys):
+    from fukurou.cli import build_parser
+
+    parser = build_parser()
+    assert parser.parse_args(["versions", "latest"]).paper_channel == "stable"
+    assert parser.parse_args(["versions", "latest", "--paper-channel", "alpha"]).paper_channel == "alpha"
+    run_args = ["run", "--minecraft-version", "26.3", "--scenario", "{}", "--paper-channel", "beta"]
+    assert parser.parse_args(run_args).paper_channel == "beta"
+    # 未知の値は argparse が入力の誤り（exit 2）にする
+    with pytest.raises(SystemExit) as exited:
+        parser.parse_args(["versions", "latest", "--paper-channel", "rc"])
+    assert exited.value.code == 2
+    # versions は値をそのまま resolve_versions へ渡す
+    received = []
+    monkeypatch.setattr(
+        "fukurou.versions.resolve_versions", lambda spec, max_versions, channel: received.append(channel) or ["26.3"]
+    )
+    assert main(["versions", "latest", "--paper-channel", "alpha"]) == 0
+    assert received == ["alpha"]
+    assert json.loads(capsys.readouterr().out) == ["26.3"]
 
 
 def test_parse_java_major():

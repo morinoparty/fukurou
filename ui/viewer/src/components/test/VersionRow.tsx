@@ -4,6 +4,7 @@ import type { ManifestRun } from "../../contract";
 import { formatDuration } from "../../lib/format";
 import { findTest, runBadgeStatus, supportedResult } from "../../lib/runs";
 import { emptyBoxStyle, panelStyle } from "../../styles";
+import { ChannelBadge } from "../ChannelBadge";
 import { Hint } from "../Hint";
 import { StatusBadge } from "../StatusBadge";
 import { runGridStyle } from "../overview/grid";
@@ -56,6 +57,7 @@ export function VersionRow({ run, testId, players }: VersionRowProps) {
         )}
         <div className={css({ mt: "1", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "2" })}>
           <StatusBadge status={test ? test.status : result ? "not-run" : runBadgeStatus(run)} />
+          <ChannelBadge channel={result?.minecraft.channel} />
           {test?.durationMs !== null && test?.durationMs !== undefined && (
             <span className={css({ fontSize: "xs", color: "fg.muted" })}>{formatDuration(test.durationMs)}</span>
           )}

@@ -1858,7 +1858,7 @@ window.__FUKUROU_MANIFEST__ = {
           "version": "1.21.11",
           "server": "paper",
           "build": 130,
-          "channel": "STABLE"
+          "channel": "ALPHA"
         },
         "java": {
           "server": 25

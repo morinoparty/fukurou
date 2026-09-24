@@ -4,8 +4,10 @@
 シナリオやスイートの誤りを検出できるようにしている。
 """
 
+from fukurou.scenario.blocks import Parallel, Repeat
 from fukurou.scenario.common import Wait
 from fukurou.scenario.discovery import PlannedStep, Selection, SuiteError, TestSpec, discover_tests, inspect_tests
+from fukurou.scenario.expansion import MAX_LANES, MAX_PLANNED_STEPS, ParallelPosition, RepeatPosition
 from fukurou.scenario.loader import ScenarioSource, load_scenario, parse_document
 from fukurou.scenario.model import (
     FAILURE_SCREENSHOT,
@@ -30,15 +32,21 @@ from fukurou.scenario.suite import ArenaSpec, ResetSpec, Suite
 
 __all__ = [
     "FAILURE_SCREENSHOT",
+    "MAX_LANES",
+    "MAX_PLANNED_STEPS",
     "ArenaSpec",
     "Chat",
     "Isolation",
+    "Parallel",
+    "ParallelPosition",
     "PlannedStep",
     "PlayerAction",
     "PlayerAssertNoLog",
     "PlayerSpec",
     "PlayerWaitForLog",
     "PressKey",
+    "Repeat",
+    "RepeatPosition",
     "ResetSpec",
     "Scenario",
     "ScenarioError",

@@ -11,10 +11,11 @@ from typing import TYPE_CHECKING
 from fukurou import __version__
 from fukurou.errors import FukurouError, InvalidInputError
 from fukurou.schema import SCHEMA_NAMES, schema_json
+from fukurou.paper import DEFAULT_PAPER_CHANNEL, PAPER_CHANNELS
 from fukurou.versions import DEFAULT_MAX_VERSIONS
 
 if TYPE_CHECKING:
-    from fukurou.scenario import Selection
+    from fukurou.scenario import PlannedStep, Selection
 
 # 終了コード: 0 成功 / 1 失敗・エラー / 2 入力の誤り
 EXIT_OK = 0
@@ -58,6 +59,7 @@ def _add_versions(commands) -> None:
         default=DEFAULT_MAX_VERSIONS,
         help=f"fail when the spec resolves to more versions than this (default {DEFAULT_MAX_VERSIONS})",
     )
+    _add_paper_channel_argument(parser)
     parser.set_defaults(handler=_versions)
 
 
@@ -115,7 +117,12 @@ def _add_run(commands) -> None:
     )
     parser.add_argument("--server-properties", default="", help='extra server.properties lines ("key=value", one per line)')
     parser.add_argument("--server-files", type=Path, help="directory whose contents are copied into the server directory")
-    parser.add_argument("--server-build", type=int, help="Paper build number (default: the latest stable build)")
+    parser.add_argument(
+        "--server-build",
+        type=int,
+        help="Paper build number (default: the newest build accepted by --paper-channel); used even if its channel is less stable",
+    )
+    _add_paper_channel_argument(parser)
     parser.add_argument("--java", type=Path, help="java for the server (default: $JAVA_HOME/bin/java or java on PATH)")
     parser.add_argument(
         "--client-java", type=Path, help="java for the clients (default: the Mojang runtime that PortableMC installs)"
@@ -158,6 +165,19 @@ def _add_selection_arguments(parser: argparse.ArgumentParser) -> None:
     filters.add_argument("--isolation", choices=ISOLATIONS, help="force this isolation for every test")
 
 
+def _add_paper_channel_argument(parser: argparse.ArgumentParser) -> None:
+    # 許容する最も不安定なチャンネル。alpha は ALPHA/BETA/STABLE、beta は BETA/STABLE、stable は STABLE のみ
+    parser.add_argument(
+        "--paper-channel",
+        choices=PAPER_CHANNELS,
+        default=DEFAULT_PAPER_CHANNEL,
+        help=(
+            "least stable Paper build channel to accept: stable (default), beta (beta or stable) "
+            "or alpha (any build)"
+        ),
+    )
+
+
 def _add_plugin_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--plugins-dir", type=Path, default=Path("."), help="directory that contains the plugin jars (default: cwd)"
@@ -178,7 +198,7 @@ def _versions(args: argparse.Namespace) -> int:
     if args.max_versions < 1:
         return _fail(EXIT_INVALID, "--max-versions must be at least 1")
     try:
-        print(json.dumps(resolve_versions(args.spec, args.max_versions)))
+        print(json.dumps(resolve_versions(args.spec, args.max_versions, args.paper_channel)))
     except InvalidInputError as error:
         return _fail(EXIT_INVALID, f"invalid version spec: {error}")
     except FukurouError as error:
@@ -221,13 +241,15 @@ def _validate(args: argparse.Namespace) -> int:
         discovery = inspect_tests(selection_from_args(args))
     except InvalidInputError as error:
         return _fail(EXIT_INVALID, str(error))
-    # 有効なテストは実行順に 1 行ずつ、問題は stderr に 1 行ずつ出す
+    # 有効なテストは実行順に 1 行ずつ、その下に展開後のステップを 1 行ずつ、問題は stderr に 1 行ずつ出す
     for test in discovery.tests:
         steps = sum(1 for step in test.steps if step.phase == "test")
         print(
             f"{test.id}: valid (players: {len(test.players)}, steps: {steps}, "
             f"planned steps: {len(test.steps)}, isolation: {test.isolation})"
         )
+        for index, planned in enumerate(test.steps):
+            print(f"  {index:>3} {describe_planned_step(planned)}")
     for error in discovery.errors:
         print(f"fukurou: {error}", file=sys.stderr)
     if discovery.errors:
@@ -270,6 +292,7 @@ def _run(args: argparse.Namespace) -> int:
         server_properties=args.server_properties,
         server_files=args.server_files,
         server_build=args.server_build,
+        paper_channel=args.paper_channel,
         java=args.java,
         client_java=args.client_java,
         work_dir=args.work_dir,
@@ -281,6 +304,21 @@ def _run(args: argparse.Namespace) -> int:
     # ジョブのキャンセル（SIGTERM）でも Ctrl+C と同じく後片付けと result.json の書き出しを行う
     signal.signal(signal.SIGTERM, _interrupt)
     return SuiteRun(options).execute()
+
+
+def describe_planned_step(planned: "PlannedStep") -> str:
+    """validate の一覧に出す、展開後の 1 ステップの説明（層・対象・アクション・ラベル・ブロック内の位置）。"""
+    from fukurou.result.steps import step_label, step_target
+
+    layer = f"fixture {planned.fixture}" if planned.fixture is not None else planned.phase
+    parts = [layer, step_target(planned.step) or "-", planned.step.action, repr(step_label(planned.step))]
+    if planned.parallel is not None:
+        parts.append(f"[parallel {planned.parallel.block} lane {planned.parallel.lane}]")
+    for position in planned.repeat:
+        parts.append(f"[repeat {position.block} {position.iteration}/{position.of}]")
+    if planned.skip_reason is not None:
+        parts.append(f"(skipped: {planned.skip_reason})")
+    return " ".join(parts)
 
 
 def selection_from_args(args: argparse.Namespace) -> "Selection":

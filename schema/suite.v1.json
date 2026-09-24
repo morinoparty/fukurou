@@ -25,12 +25,28 @@
       "additionalProperties": false,
       "properties": {
         "on": {
-          "not": {
-            "const": "server"
-          },
-          "pattern": "^[A-Za-z0-9_]{3,16}$",
-          "title": "On",
-          "type": "string"
+          "anyOf": [
+            {
+              "not": {
+                "const": "server"
+              },
+              "pattern": "^[A-Za-z0-9_]{3,16}$",
+              "type": "string"
+            },
+            {
+              "items": {
+                "not": {
+                  "const": "server"
+                },
+                "pattern": "^[A-Za-z0-9_]{3,16}$",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            }
+          ],
+          "title": "On"
         },
         "action": {
           "const": "chat",
@@ -52,6 +68,107 @@
       "title": "Chat",
       "type": "object"
     },
+    "Parallel": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "const": "parallel",
+          "default": "parallel",
+          "title": "Action",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "oneOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "parallel": "#/$defs/Parallel",
+                    "repeat": "#/$defs/Repeat",
+                    "wait": "#/$defs/Wait"
+                  },
+                  "propertyName": "action"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/Wait"
+                  },
+                  {
+                    "$ref": "#/$defs/Parallel"
+                  },
+                  {
+                    "$ref": "#/$defs/Repeat"
+                  }
+                ]
+              },
+              {
+                "discriminator": {
+                  "mapping": {
+                    "assert_no_log": "#/$defs/ServerAssertNoLog",
+                    "command": "#/$defs/ServerCommand",
+                    "wait_for_log": "#/$defs/ServerWaitForLog"
+                  },
+                  "propertyName": "action"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/ServerCommand"
+                  },
+                  {
+                    "$ref": "#/$defs/ServerWaitForLog"
+                  },
+                  {
+                    "$ref": "#/$defs/ServerAssertNoLog"
+                  }
+                ]
+              },
+              {
+                "discriminator": {
+                  "mapping": {
+                    "assert_no_log": "#/$defs/PlayerAssertNoLog",
+                    "chat": "#/$defs/Chat",
+                    "press_key": "#/$defs/PressKey",
+                    "screenshot": "#/$defs/Screenshot",
+                    "type_text": "#/$defs/TypeText",
+                    "wait_for_log": "#/$defs/PlayerWaitForLog"
+                  },
+                  "propertyName": "action"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/PressKey"
+                  },
+                  {
+                    "$ref": "#/$defs/TypeText"
+                  },
+                  {
+                    "$ref": "#/$defs/Chat"
+                  },
+                  {
+                    "$ref": "#/$defs/PlayerWaitForLog"
+                  },
+                  {
+                    "$ref": "#/$defs/PlayerAssertNoLog"
+                  },
+                  {
+                    "$ref": "#/$defs/Screenshot"
+                  }
+                ]
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "action",
+        "steps"
+      ],
+      "title": "Parallel",
+      "type": "object"
+    },
     "PlayerAssertNoLog": {
       "additionalProperties": false,
       "properties": {
@@ -61,12 +178,28 @@
           "type": "string"
         },
         "on": {
-          "not": {
-            "const": "server"
-          },
-          "pattern": "^[A-Za-z0-9_]{3,16}$",
-          "title": "On",
-          "type": "string"
+          "anyOf": [
+            {
+              "not": {
+                "const": "server"
+              },
+              "pattern": "^[A-Za-z0-9_]{3,16}$",
+              "type": "string"
+            },
+            {
+              "items": {
+                "not": {
+                  "const": "server"
+                },
+                "pattern": "^[A-Za-z0-9_]{3,16}$",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            }
+          ],
+          "title": "On"
         },
         "action": {
           "const": "assert_no_log",
@@ -115,12 +248,28 @@
           "type": "string"
         },
         "on": {
-          "not": {
-            "const": "server"
-          },
-          "pattern": "^[A-Za-z0-9_]{3,16}$",
-          "title": "On",
-          "type": "string"
+          "anyOf": [
+            {
+              "not": {
+                "const": "server"
+              },
+              "pattern": "^[A-Za-z0-9_]{3,16}$",
+              "type": "string"
+            },
+            {
+              "items": {
+                "not": {
+                  "const": "server"
+                },
+                "pattern": "^[A-Za-z0-9_]{3,16}$",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            }
+          ],
+          "title": "On"
         },
         "action": {
           "const": "wait_for_log",
@@ -147,12 +296,28 @@
       "additionalProperties": false,
       "properties": {
         "on": {
-          "not": {
-            "const": "server"
-          },
-          "pattern": "^[A-Za-z0-9_]{3,16}$",
-          "title": "On",
-          "type": "string"
+          "anyOf": [
+            {
+              "not": {
+                "const": "server"
+              },
+              "pattern": "^[A-Za-z0-9_]{3,16}$",
+              "type": "string"
+            },
+            {
+              "items": {
+                "not": {
+                  "const": "server"
+                },
+                "pattern": "^[A-Za-z0-9_]{3,16}$",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            }
+          ],
+          "title": "On"
         },
         "action": {
           "const": "press_key",
@@ -174,16 +339,146 @@
       "title": "PressKey",
       "type": "object"
     },
+    "Repeat": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "const": "repeat",
+          "default": "repeat",
+          "title": "Action",
+          "type": "string"
+        },
+        "times": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Times",
+          "type": "integer"
+        },
+        "as": {
+          "default": "i",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "As",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "oneOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "parallel": "#/$defs/Parallel",
+                    "repeat": "#/$defs/Repeat",
+                    "wait": "#/$defs/Wait"
+                  },
+                  "propertyName": "action"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/Wait"
+                  },
+                  {
+                    "$ref": "#/$defs/Parallel"
+                  },
+                  {
+                    "$ref": "#/$defs/Repeat"
+                  }
+                ]
+              },
+              {
+                "discriminator": {
+                  "mapping": {
+                    "assert_no_log": "#/$defs/ServerAssertNoLog",
+                    "command": "#/$defs/ServerCommand",
+                    "wait_for_log": "#/$defs/ServerWaitForLog"
+                  },
+                  "propertyName": "action"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/ServerCommand"
+                  },
+                  {
+                    "$ref": "#/$defs/ServerWaitForLog"
+                  },
+                  {
+                    "$ref": "#/$defs/ServerAssertNoLog"
+                  }
+                ]
+              },
+              {
+                "discriminator": {
+                  "mapping": {
+                    "assert_no_log": "#/$defs/PlayerAssertNoLog",
+                    "chat": "#/$defs/Chat",
+                    "press_key": "#/$defs/PressKey",
+                    "screenshot": "#/$defs/Screenshot",
+                    "type_text": "#/$defs/TypeText",
+                    "wait_for_log": "#/$defs/PlayerWaitForLog"
+                  },
+                  "propertyName": "action"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/PressKey"
+                  },
+                  {
+                    "$ref": "#/$defs/TypeText"
+                  },
+                  {
+                    "$ref": "#/$defs/Chat"
+                  },
+                  {
+                    "$ref": "#/$defs/PlayerWaitForLog"
+                  },
+                  {
+                    "$ref": "#/$defs/PlayerAssertNoLog"
+                  },
+                  {
+                    "$ref": "#/$defs/Screenshot"
+                  }
+                ]
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "action",
+        "times",
+        "steps"
+      ],
+      "title": "Repeat",
+      "type": "object"
+    },
     "Screenshot": {
       "additionalProperties": false,
       "properties": {
         "on": {
-          "not": {
-            "const": "server"
-          },
-          "pattern": "^[A-Za-z0-9_]{3,16}$",
-          "title": "On",
-          "type": "string"
+          "anyOf": [
+            {
+              "not": {
+                "const": "server"
+              },
+              "pattern": "^[A-Za-z0-9_]{3,16}$",
+              "type": "string"
+            },
+            {
+              "items": {
+                "not": {
+                  "const": "server"
+                },
+                "pattern": "^[A-Za-z0-9_]{3,16}$",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            }
+          ],
+          "title": "On"
         },
         "action": {
           "const": "screenshot",
@@ -192,7 +487,7 @@
           "type": "string"
         },
         "name": {
-          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+          "pattern": "^(?:[A-Za-z0-9]|\\$\\{[^}]*\\})(?:[A-Za-z0-9_.-]|\\$\\{[^}]*\\})*$",
           "title": "Name",
           "type": "string"
         }
@@ -299,12 +594,28 @@
       "additionalProperties": false,
       "properties": {
         "on": {
-          "not": {
-            "const": "server"
-          },
-          "pattern": "^[A-Za-z0-9_]{3,16}$",
-          "title": "On",
-          "type": "string"
+          "anyOf": [
+            {
+              "not": {
+                "const": "server"
+              },
+              "pattern": "^[A-Za-z0-9_]{3,16}$",
+              "type": "string"
+            },
+            {
+              "items": {
+                "not": {
+                  "const": "server"
+                },
+                "pattern": "^[A-Za-z0-9_]{3,16}$",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            }
+          ],
+          "title": "On"
         },
         "action": {
           "const": "type_text",
@@ -437,7 +748,25 @@
           "items": {
             "oneOf": [
               {
-                "$ref": "#/$defs/Wait"
+                "discriminator": {
+                  "mapping": {
+                    "parallel": "#/$defs/Parallel",
+                    "repeat": "#/$defs/Repeat",
+                    "wait": "#/$defs/Wait"
+                  },
+                  "propertyName": "action"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/Wait"
+                  },
+                  {
+                    "$ref": "#/$defs/Parallel"
+                  },
+                  {
+                    "$ref": "#/$defs/Repeat"
+                  }
+                ]
               },
               {
                 "discriminator": {
@@ -506,7 +835,25 @@
       "items": {
         "oneOf": [
           {
-            "$ref": "#/$defs/Wait"
+            "discriminator": {
+              "mapping": {
+                "parallel": "#/$defs/Parallel",
+                "repeat": "#/$defs/Repeat",
+                "wait": "#/$defs/Wait"
+              },
+              "propertyName": "action"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/Wait"
+              },
+              {
+                "$ref": "#/$defs/Parallel"
+              },
+              {
+                "$ref": "#/$defs/Repeat"
+              }
+            ]
           },
           {
             "discriminator": {

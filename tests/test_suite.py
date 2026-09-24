@@ -9,7 +9,9 @@ import pytest
 from fukurou.scenario import (
     ArenaSpec,
     Chat,
+    ParallelPosition,
     PlayerSpec,
+    RepeatPosition,
     ResetSpec,
     ScenarioError,
     Selection,
@@ -262,3 +264,76 @@ def test_versions_constraints_give_a_skip_reason(tmp_path, monkeypatch):
 def test_scenario_errors_are_not_suite_errors():
     # ScenarioError は単体のシナリオの検証用（ValueError）。discovery はそれを SuiteError（exit 2）に包む
     assert not issubclass(ScenarioError, SuiteError)
+
+
+# --- parallel / repeat の展開 ---------------------------------------------------------
+
+
+def test_blocks_in_shared_steps_are_numbered_per_test_and_skip_absent_players_per_child(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    make_suite(
+        tmp_path,
+        beforeEach=[{"on": ["Alice", "Bob"], "action": "press_key", "key": "F1"}],
+        fixtures={
+            "views": [
+                {
+                    "action": "parallel",
+                    "steps": [
+                        {"on": "Bob", "action": "screenshot", "name": "bob-view"},
+                        {"action": "repeat", "times": 2, "steps": [{"on": "Alice", "action": "chat", "text": "hi ${i}"}]},
+                    ],
+                }
+            ]
+        },
+    )
+    make_test(
+        tmp_path,
+        "alice-only",
+        players=[{"name": "Alice"}],
+        use=["views"],
+        steps=[{"on": ["Alice"], "action": "screenshot", "name": "done"}, {"on": "server", "action": "command", "command": "say"}],
+    )
+    _, [test] = discover_tests(Selection(suite=Path("game-test/fukurou.yml")))
+    assert [(step.phase, step.step.on, step.skip_reason) for step in test.steps] == [
+        ("beforeEach", "Alice", None),
+        # 複数プレイヤーの on のうち、テストに居ないプレイヤーの分だけが飛ぶ
+        ("beforeEach", "Bob", "player Bob is not in this test"),
+        ("fixture", "Bob", "player Bob is not in this test"),
+        ("fixture", "Alice", None),
+        ("fixture", "Alice", None),
+        # 1 人だけの一覧はブロックにならない
+        ("test", "Alice", None),
+        ("test", "server", None),
+    ]
+    # ブロック番号は beforeEach・fixture・テスト自身を通した通し番号
+    assert [step.parallel for step in test.steps] == [
+        ParallelPosition(0, 0),
+        ParallelPosition(0, 1),
+        ParallelPosition(1, 0),
+        ParallelPosition(1, 1),
+        ParallelPosition(1, 1),
+        None,
+        None,
+    ]
+    assert [step.repeat for step in test.steps][3:5] == [(RepeatPosition(0, 1, 2),), (RepeatPosition(0, 2, 2),)]
+    assert test.steps[4].step == Chat(on="Alice", text="hi 2")
+
+
+def test_block_rules_apply_to_the_suite_and_the_whole_plan(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    nested = [{"action": "parallel", "steps": [{"action": "parallel", "steps": [WAIT]}]}]
+    with pytest.raises(ValueError, match="fixture 'bad': step 0: parallel blocks cannot be nested"):
+        Suite.model_validate({"fixtures": {"bad": nested}})
+    # 展開後のステップ数の上限は fixture とテスト自身のステップを合わせて数える
+    make_suite(
+        tmp_path,
+        fixtures={
+            "many": [{"action": "repeat", "times": 100, "steps": [{"on": ["Alice", "Alise"], "action": "chat", "text": "x"}]}]
+        },
+    )
+    make_test(tmp_path, "big", use=["many"], steps=[{"action": "repeat", "times": 100, "steps": [WAIT] * 9}])
+    discovery = inspect_tests(Selection(suite=Path("game-test/fukurou.yml")))
+    assert discovery.errors == [
+        "suite fixture 'many' step 0 > step 0: player 'Alise' is not declared in any players",
+        "big: a test may have at most 1000 planned steps after expanding repeat blocks",
+    ]

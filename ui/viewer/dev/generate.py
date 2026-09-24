@@ -114,6 +114,8 @@ RUNS_SPEC = [
     {
         "version": "1.21.11",
         "build": 130,
+        # Paper の ALPHA ビルドで試した run（--paper-channel alpha）。ビューアでは "alpha" のバッジが付く
+        "channel": "ALPHA",
         "java": 25,
         "outcomes": {
             "stamp-thinking-face": ("passed", None, None),
@@ -478,7 +480,7 @@ def build_run(spec: dict) -> tuple[dict, dict[str, bytes]]:
         "id": run_id,
         "status": run_status,
         "fukurou": {"version": "2.0.0", "portablemc": "5.0.4"},
-        "minecraft": {"version": version, "server": "paper", "build": spec["build"], "channel": "STABLE"},
+        "minecraft": {"version": version, "server": "paper", "build": spec["build"], "channel": spec.get("channel", "STABLE")},
         "java": {"server": spec["java"]},
         "plugins": [
             {"file": "MineStamp-abc1234-all.jar", "sha256": SHA, "name": "MineStamp", "version": "1.4.0", "role": "under-test", "source": None, "classFileMajor": 69, "enabled": True},

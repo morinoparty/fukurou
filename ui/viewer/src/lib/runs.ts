@@ -86,7 +86,10 @@ export function findScreenshot(test: TestResult, player: string, name: string): 
   return test.screenshots.find((shot) => shot.player === player && shot.name === name);
 }
 
-/** テストの中のプレイヤーのスクリーンショットを撮影順（stepIndex 順、failure は最後）に並べる */
+/**
+ * テストの中のプレイヤーのスクリーンショットを撮影順（stepIndex 順、failure は最後）に並べる。
+ * repeat は計画時に展開され stepIndex は計画順なので、repeat の中で撮ったものは回の順（iteration 1, 2, ...）になる
+ */
 export function screenshotsOf(test: TestResult, player: string): ScreenshotInfo[] {
   return test.screenshots
     .filter((shot) => shot.player === player)

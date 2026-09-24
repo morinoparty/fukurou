@@ -3,6 +3,7 @@ import { css } from "styled-system/css";
 import { Table } from "../../chlorophyll";
 import type { ManifestRun, ManifestTest } from "../../contract";
 import { passedCount, runBadgeStatus, runLabel, supportedResult, testLabel } from "../../lib/runs";
+import { RunChannelBadge } from "../ChannelBadge";
 import { Hint } from "../Hint";
 import { StatusBadge } from "../StatusBadge";
 
@@ -62,6 +63,7 @@ export function StatusGrid({ tests, runs }: StatusGridProps) {
                 <Link to="/runs/$runId" params={{ runId: run.id }} className={versionLink} title={run.id}>
                   {runLabel(run)}
                 </Link>
+                <RunChannelBadge run={run} />
                 <StatusBadge status={runBadgeStatus(run)} />
               </div>
             </Table.Head>

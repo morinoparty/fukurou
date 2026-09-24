@@ -140,8 +140,8 @@ The server's Java version is picked automatically: the newer of the version Moja
 A scenario (test) lists its `players` and its `steps`, plus optional metadata. It can be written in JSON or YAML. The `on` field of a step selects its target:
 
 - `on: server` runs a server action.
-- `on: <player name>` runs a player action on that player's client. The player must be listed in `players` (the test's own, or the suite's if the test does not declare any).
-- No `on` runs a common action.
+- `on: <player name>` runs a player action on that player's client. The player must be listed in `players` (the test's own, or the suite's if the test does not declare any). `on` can also be a list of names — see [below](#parallel-repeat-and-multiple-players).
+- No `on` runs a common action. A `parallel` or `repeat` block also has no `on` — see [below](#parallel-repeat-and-multiple-players).
 
 fukurou reads YAML with YAML 1.2 booleans (only `true` and `false`), so a bare `on:` key works. Quoting it as `"on":` also works and keeps the file readable by YAML 1.1 tools, which treat a bare `on` as `true`.
 
@@ -213,6 +213,31 @@ Screenshots are not compared with baseline images. They are saved so that you ca
 > [!IMPORTANT]
 > `press_key` and `type_text` can leave a client mid-action (a menu open, a partial chat message) if the test fails or times out. fukurou detects this and relaunches the client before the next test, which costs 20–60 seconds. Prefer `chat` when it does the same job — it is atomic and never leaves the client dirty.
 
+### Parallel, repeat and multiple players
+
+Any player action's `on` can also be a list of player names (`"on": ["Alice", "Bob"]`) to run it on several players at once. A step can also be a block instead of a single action:
+
+- `{ "action": "parallel", "steps": [...] }` runs its children at the same time and waits for all of them; an `on` list is the same as a `parallel` with one copy per player.
+- `{ "action": "repeat", "times": N, "as": "i", "steps": [...] }` runs its steps N times, replacing `${i}` (1-based) and `${i0}` (0-based) in each child's `text` / `command` / `pattern` / `name` / `key`.
+
+```json
+{
+  "action": "parallel",
+  "steps": [
+    { "on": "server", "action": "command", "command": "weather clear" },
+    { "on": "Alice", "action": "screenshot", "name": "midday" }
+  ]
+}
+```
+
+```json
+{ "action": "repeat", "times": 3, "as": "i", "steps": [
+  { "on": "Alice", "action": "screenshot", "name": "shot-${i}" }
+] }
+```
+
+See [Parallel and repeat steps](docs/usage.md#parallel-and-repeat-steps) in docs/usage.md for the full rules (nesting, limits, which actions may run at the same time) and [contract.md](docs/contract.md#parallel-and-repeat-blocks-fukurou-21) for the `parallel` / `repeat` / `startedAt` / `finishedAt` fields this adds to `result.json`. `examples/parallel-repeat.json` is a runnable example.
+
 ## Running it locally
 
 fukurou is a Python package. With [uv](https://docs.astral.sh/uv/) you can run it straight from this repository:
@@ -240,7 +265,7 @@ uvx --from git+https://github.com/morinoparty/fukurou fukurou run \
 ## Requirements
 
 - **Linux x86_64.** The runner uses Xvfb, `xdotool` and the Linux build of PortableMC. On GitHub Actions, `ubuntu-24.04` works; the action installs the system packages with `apt-get`.
-- **Minecraft 1.20 or later.** Clients join with Quick Play and the flat world assumes the 1.18+ world height. Only releases whose latest Paper build is `STABLE` are picked from ranges and `latest`.
+- **Minecraft 1.20 or later.** Clients join with Quick Play and the flat world assumes the 1.18+ world height. By default only releases with a `STABLE` Paper build are picked and the run uses the newest `STABLE` build. Set `paper-channel: beta` or `alpha` (`--paper-channel`) on both the `versions` action and the run action to accept less stable builds, such as a release that Paper has only as `ALPHA` builds (see [Paper channels](docs/usage.md#paper-channels)).
 - **The Minecraft EULA.** fukurou downloads and runs the Minecraft server and client, so you must accept the [Minecraft EULA](https://aka.ms/MinecraftEULA) with `accept-eula: "true"` (or `--accept-eula`). Without it, nothing is started.
 - **Offline mode.** The server runs with `online-mode=false`, so no Microsoft account is needed. Your plugin has to work with offline-mode UUIDs.
 

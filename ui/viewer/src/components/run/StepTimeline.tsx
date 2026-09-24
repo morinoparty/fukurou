@@ -1,27 +1,11 @@
 import { useState } from "react";
 import { css } from "styled-system/css";
-import { Table } from "../../chlorophyll";
 import type { ManifestRun, ResetInfo, StepResult, TestResult } from "../../contract";
-import { assetUrl } from "../../lib/assets";
 import { formatDuration } from "../../lib/format";
+import { buildStepTree, wallDuration } from "../../lib/stepTree";
 import { codeBlockStyle, panelStyle } from "../../styles";
-import { useLightbox } from "../lightbox/LightboxContext";
 import { StatusBadge } from "../StatusBadge";
-
-// 失敗したステップは行ごと赤く、実行されなかったステップは文字を薄くする
-const failedRow = css({ bg: "bg.error", _hover: { bg: "bg.error" } });
-const skippedRow = css({ color: "fg.disabled" });
-
-const numberCell = css({ fontVariantNumeric: "tabular-nums", color: "fg.muted", width: "1%" });
-const durationCell = css({ fontVariantNumeric: "tabular-nums", textAlign: "end", whiteSpace: "nowrap" });
-const linkButton = css({
-  fontSize: "xs",
-  color: "colorPalette.fg",
-  textDecoration: "underline",
-  textUnderlineOffset: "2px",
-  cursor: "pointer",
-});
-const stepError = css(codeBlockStyle, { mt: "1", color: "fg.error" });
+import { StepsTable } from "./StepsTable";
 
 // phase ごとのまとまり。見出しのボタンで折りたたむ
 const groupBox = css(panelStyle, { overflow: "hidden" });
@@ -119,6 +103,7 @@ export function StepTimeline({ run, test }: StepTimelineProps) {
             testId={test.id}
             group={group}
             defaultOpen={group.phase === "test" || hasProblem(group, failureStep)}
+            failureStep={failureStep}
           />
         ))
       )}
@@ -144,14 +129,17 @@ interface GroupProps {
   testId: string;
   group: StepGroup;
   defaultOpen: boolean;
+  failureStep: number | null;
 }
 
 /** 1 まとまり分。見出しのボタンで開閉し、中身は Chlorophyll の Table */
-function Group({ run, testId, group, defaultOpen }: GroupProps) {
+function Group({ run, testId, group, defaultOpen, failureStep }: GroupProps) {
   const [open, setOpen] = useState(defaultOpen);
   const failed = group.steps.filter((step) => step.status === "failed").length;
   const skipped = group.steps.filter((step) => step.status === "skipped").length;
-  const total = group.steps.reduce((sum, step) => sum + (step.durationMs ?? 0), 0);
+  // 同時に動いたステップを二重に数えないよう、parallel ブロックは壁時計の時間で数える
+  const nodes = buildStepTree(group.steps);
+  const total = wallDuration(nodes);
   const first = group.steps[0];
   const last = group.steps[group.steps.length - 1];
   const bodyId = `steps-${group.key.replace(/[^A-Za-z0-9_-]/g, "-")}`;
@@ -176,65 +164,8 @@ function Group({ run, testId, group, defaultOpen }: GroupProps) {
         </span>
       </button>
       <div id={bodyId} hidden={!open}>
-        <StepsTable run={run} testId={testId} steps={group.steps} />
+        <StepsTable run={run} testId={testId} nodes={nodes} failureStep={failureStep} />
       </div>
     </section>
-  );
-}
-
-interface StepsTableProps {
-  run: ManifestRun;
-  testId: string;
-  steps: StepResult[];
-}
-
-/** ステップの表。失敗したステップは行ごと強調する */
-function StepsTable({ run, testId, steps }: StepsTableProps) {
-  const openLightbox = useLightbox();
-  // screenshot アクションの行から、そのステップで撮った画像を開く
-  const openStepScreenshot = (step: StepResult, path: string) =>
-    openLightbox({ src: assetUrl(run, path), caption: `${run.id} / ${testId} / step ${step.index}: ${step.label}` });
-
-  return (
-    <Table.Root size="sm" scrollAreaLabel="Steps">
-      <Table.Header>
-        <Table.Row>
-          <Table.Head>#</Table.Head>
-          <Table.Head>On</Table.Head>
-          <Table.Head>Action</Table.Head>
-          <Table.Head>Label</Table.Head>
-          <Table.Head>Status</Table.Head>
-          <Table.Head className={css({ textAlign: "end" })}>Duration</Table.Head>
-        </Table.Row>
-      </Table.Header>
-      <Table.Body>
-        {steps.map((step) => {
-          const screenshot = step.screenshot;
-          const rowClass = step.status === "failed" ? failedRow : step.status === "skipped" ? skippedRow : undefined;
-          return (
-            <Table.Row key={step.index} id={`step-${step.index}`} className={rowClass}>
-              <Table.Cell className={numberCell}>{step.index}</Table.Cell>
-              <Table.Cell>{step.on ?? "–"}</Table.Cell>
-              <Table.Cell>
-                <code>{step.action}</code>
-              </Table.Cell>
-              <Table.Cell className={css({ minWidth: "48", wordBreak: "break-word" })}>
-                <div>{step.label}</div>
-                {screenshot && (
-                  <button type="button" className={linkButton} onClick={() => openStepScreenshot(step, screenshot)}>
-                    View screenshot
-                  </button>
-                )}
-                {step.error && <pre className={stepError}>{step.error}</pre>}
-              </Table.Cell>
-              <Table.Cell>
-                <StatusBadge status={step.status} />
-              </Table.Cell>
-              <Table.Cell className={durationCell}>{formatDuration(step.durationMs)}</Table.Cell>
-            </Table.Row>
-          );
-        })}
-      </Table.Body>
-    </Table.Root>
   );
 }

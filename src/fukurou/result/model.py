@@ -9,7 +9,7 @@ schemaVersion 2 では 1 バージョン = 1 サーバーセッションで複�
 ステップ・スクリーンショットはルートから tests[] へ、ログは sessions[] へ移った。
 """
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -165,6 +165,26 @@ class ResetInfo(ContractModel):
     error: str | None = None
 
 
+class ParallelInfo(ContractModel):
+    """parallel ブロックの中のステップの位置。同じ block のステップは同時に実行された。"""
+
+    # テスト内の parallel ブロックの通し番号（0 始まり、計画順。repeat で展開した分は別のブロック）
+    block: int
+    # ブロックの中の子の番号（0 始まり）。同じ lane のステップは順に実行された
+    lane: int
+
+
+class RepeatInfo(ContractModel):
+    """repeat ブロックの何回目のステップか。"""
+
+    # テスト内の repeat ブロックの通し番号（0 始まり、計画順。外側の repeat で展開した分は別のブロック）
+    block: int
+    # 1 始まりの繰り返し番号
+    iteration: int
+    # 繰り返しの回数（times）
+    of: int
+
+
 class StepResult(ContractModel):
     # そのテストの steps 配列の添字（failure.stepIndex と screenshots[].stepIndex もこれを指す）
     index: int
@@ -182,6 +202,13 @@ class StepResult(ContractModel):
     error: str | None = None
     # screenshot アクションのときだけ、保存先の相対パス
     screenshot: str | None = None
+    # parallel ブロックの中のステップなら、そのブロックとレーン。それ以外は None
+    parallel: ParallelInfo | None = None
+    # repeat ブロックの中のステップなら、外側から順に何回目か。それ以外は None（空の一覧は不可: スキーマにも minItems で表す）
+    repeat: Annotated[list[RepeatInfo], Field(min_length=1)] | None = None
+    # 実行を始めた / 終えた時刻（ISO 8601）。並列のステップは durationMs が重なるので、ビューアはこれで重なりを示す
+    started_at: str | None = Field(default=None, alias="startedAt")
+    finished_at: str | None = Field(default=None, alias="finishedAt")
 
     @model_validator(mode="after")
     def _check_fixture(self) -> "StepResult":

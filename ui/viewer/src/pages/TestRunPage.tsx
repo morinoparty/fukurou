@@ -1,6 +1,7 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { css } from "styled-system/css";
 import { Button } from "../chlorophyll";
+import { ChannelBadge } from "../components/ChannelBadge";
 import { Message } from "../components/Message";
 import { PageNav } from "../components/PageNav";
 import { Section } from "../components/Section";
@@ -100,6 +101,7 @@ export function TestRunPage() {
         <span className={css({ color: "fg.muted" })}>
           Minecraft {result.minecraft.version} · {formatDuration(test.durationMs)}
         </span>
+        <ChannelBadge channel={result.minecraft.channel} />
         {test.tags.map((name) => (
           <span key={name} className={tag}>
             {name}

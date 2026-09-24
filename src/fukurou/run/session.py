@@ -29,6 +29,10 @@ CLIENT_JOIN_TIMEOUT = 900.0
 # 起動完了の時点で有効化は終わっているはずなので短くてよい
 PLUGIN_CHECK_TIMEOUT = 15.0
 JOIN_POLL_SECONDS = 1.0
+# dirty の理由の定型。passed で終わらなかったテストで入力を受けた（画面が開いたままかもしれない）
+DIRTY_INPUT_REASON = "the previous test left keys pressed or a screen open"
+# 期限切れの猶予を過ぎてもレーンが操作し続けていた（置き去りにした）
+DIRTY_STRANDED_REASON = "a lane of the previous test was still driving the client after its timeout"
 
 
 class GameSession:
@@ -224,10 +228,10 @@ class GameSession:
                 ranges[path] = line_range
         return ranges
 
-    def mark_dirty(self, names: set[str]) -> None:
-        """passed で終わらなかったテストで入力を受けたプレイヤー。画面が開いたままかもしれない。"""
+    def mark_dirty(self, names: set[str], reason: str = DIRTY_INPUT_REASON) -> None:
+        """次に使う前に起動し直すプレイヤー。既定は passed で終わらなかったテストで入力を受けた（画面が開いたままかもしれない）。"""
         for name in names:
-            self.dirty.setdefault(name, "the previous test left keys pressed or a screen open")
+            self.dirty.setdefault(name, reason)
 
     def server_alive(self) -> bool:
         return self.server is not None and self.server.is_running()

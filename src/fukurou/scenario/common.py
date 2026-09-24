@@ -14,6 +14,15 @@ PlayerName = Annotated[
     str,
     Field(pattern=r"^[A-Za-z0-9_]{3,16}$", json_schema_extra={"not": {"const": SERVER_TARGET}}),
 ]
+# repeat の中で繰り返し番号に置き換える "${<変数名>}"。未知の名前を検出できるよう中身は何でも拾う
+PLACEHOLDER = re.compile(r"\$\{([^}]*)\}")
+# repeat の as に書ける変数名。"${i}" は 1 始まり、"${i0}" は 0 始まりの番号になる
+VARIABLE_NAME_PATTERN = r"^[a-z][a-z0-9_]*$"
+
+
+def without_placeholders(text: str) -> str:
+    """プレースホルダーを数字に置き換えた文字列。展開前のテンプレートを、展開後と同じ規則で検証するために使う。"""
+    return PLACEHOLDER.sub("0", text)
 
 
 class ActionModel(BaseModel):
@@ -31,8 +40,9 @@ class LogPatternFields(BaseModel):
     @classmethod
     def _compile(cls, pattern: str) -> str:
         # 実行時ではなく読み込み時に正規表現の誤りを検出する
+        # repeat の中のテンプレート（"hello ${i}"）も、展開後の値と同じく正規表現として検証する
         try:
-            re.compile(pattern)
+            re.compile(without_placeholders(pattern))
         except re.error as error:
             raise ValueError(f"invalid regular expression: {error}") from error
         return pattern

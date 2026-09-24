@@ -1,6 +1,7 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { css } from "styled-system/css";
 import { Button } from "../chlorophyll";
+import { ChannelBadge } from "../components/ChannelBadge";
 import { Message } from "../components/Message";
 import { PageNav } from "../components/PageNav";
 import { Section } from "../components/Section";
@@ -62,6 +63,7 @@ export function RunPage() {
       <header className={header}>
         <h1 className={pageTitle}>Minecraft {result.minecraft.version}</h1>
         <StatusBadge status={result.status} size="md" />
+        <ChannelBadge channel={result.minecraft.channel} />
         <span className={css({ color: "fg.muted" })}>
           {run.id} · {formatDuration(result.durationMs)}
         </span>

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/morinoparty/fukurou/v2/schema/scenario.v2.json",
+  "tags": ["parallel-repeat"],
+  "players": [{ "name": "Alice", "op": true }],
+  "steps": [
+    { "on": "server", "action": "command", "command": "time set noon" },
+    { "action": "wait", "seconds": 3 },
+    {
+      "action": "parallel",
+      "steps": [
+        { "on": "server", "action": "command", "command": "weather clear" },
+        { "on": "Alice", "action": "screenshot", "name": "midday" }
+      ]
+    },
+    {
+      "action": "repeat",
+      "times": 2,
+      "as": "i",
+      "steps": [
+        { "on": "Alice", "action": "press_key", "key": "F5" },
+        { "on": "Alice", "action": "screenshot", "name": "shot-${i}" }
+      ]
+    }
+  ]
+}

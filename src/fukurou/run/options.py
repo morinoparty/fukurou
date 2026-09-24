@@ -22,6 +22,8 @@ class RunOptions:
     server_properties: str
     server_files: Path | None
     server_build: int | None
+    # 許容する最も不安定な Paper のチャンネル（stable / beta / alpha）
+    paper_channel: str
     java: Path | None
     client_java: Path | None
     work_dir: Path
