@@ -1,6 +1,7 @@
 """テストに使う Minecraft バージョンを Mojang のバージョンマニフェストと Paper の API から決める。
 
-Mojang のマニフェストでリリースの順序を取り、Paper に STABLE なビルドがあるバージョンを選ぶ。
+Mojang のマニフェストでリリースの順序を取り、Paper に許容するチャンネル（--paper-channel、既定は STABLE のみ）の
+ビルドがあるバージョンを選ぶ。
 バージョン番号の大小比較は 1.21.11 と 26.1 のように体系が変わるため行わず、
 マニフェストの並び（リリースの新しい順）だけで前後関係を判断する。
 """
@@ -10,7 +11,13 @@ from typing import Callable
 
 from fukurou.errors import InvalidInputError
 from fukurou.mojang import fetch_manifest
-from fukurou.paper import STABLE_CHANNEL, fetch_project, latest_channel
+from fukurou.paper import (
+    DEFAULT_PAPER_CHANNEL,
+    accepted_channels,
+    fetch_project,
+    has_accepted_build,
+    no_accepted_build_message,
+)
 
 # fukurou が対応する最も古いバージョン。これより古い指定はエラーにする
 MIN_SUPPORTED = "1.20"
@@ -73,18 +80,20 @@ def spec_includes(spec: str, version: str, releases: list[str]) -> bool:
     return newest <= releases.index(version) <= oldest
 
 
-def resolve_versions(spec: str, max_versions: int = DEFAULT_MAX_VERSIONS) -> list[str]:
+def resolve_versions(
+    spec: str, max_versions: int = DEFAULT_MAX_VERSIONS, paper_channel: str = DEFAULT_PAPER_CHANNEL
+) -> list[str]:
     """バージョン指定を、テストするバージョンのリスト（古い順）に解決する。
 
-    指定できる形式:
-      - "latest": Paper の STABLE ビルドがある最新リリース
-      - "1.21.11": そのバージョンのみ
-      - "1.20.5-": 1.20.5 以降で Paper の STABLE ビルドがある全リリース
-      - "1.20.5-1.21.11": 両端を含む範囲で Paper の STABLE ビルドがある全リリース
+    指定できる形式（「許容するビルド」は paper_channel で決まる。既定の stable は STABLE のみ）:
+      - "latest": Paper に許容するビルドがある最新リリース
+      - "1.21.11": そのバージョンのみ（許容するビルドが無ければエラー）
+      - "1.20.5-": 1.20.5 以降で Paper に許容するビルドがある全リリース
+      - "1.20.5-1.21.11": 両端を含む範囲で Paper に許容するビルドがある全リリース
     """
     releases = fetch_manifest().release_ids()
     paper_versions = fetch_project().version_ids()
-    return select_versions(spec, releases, paper_versions, latest_channel, max_versions)
+    return select_versions(spec, releases, paper_versions, has_accepted_build, max_versions, paper_channel)
 
 
 def resolve_version(spec: str) -> str:
@@ -113,22 +122,28 @@ def select_versions(
     spec: str,
     releases: list[str],
     paper_versions: set[str],
-    channel_of: Callable[[str], str],
+    has_build: Callable[[str, str], bool],
     max_versions: int = DEFAULT_MAX_VERSIONS,
+    paper_channel: str = DEFAULT_PAPER_CHANNEL,
 ) -> list[str]:
-    """取得済みのデータからバージョンを選ぶ。ネットワークに依存しないため単体テストできる。"""
+    """取得済みのデータからバージョンを選ぶ。ネットワークに依存しないため単体テストできる。
+
+    has_build(version, paper_channel) は、そのバージョンに paper_channel で許されるチャンネルのビルドが
+    1 つでもあるかを返す（最新ビルドだけでなく古いビルドも含めて判定する。実体は paper.has_accepted_build）。
+    """
+    accepted_channels(paper_channel)  # 不正な値はバージョンを見る前に弾く
     spec = spec.strip()
     if not spec:
         raise VersionError("the version spec is empty")
     if spec == LATEST:
-        return [select_latest(releases, paper_versions, channel_of)]
+        return [select_latest(releases, paper_versions, has_build, paper_channel)]
     if spec not in releases and spec in paper_versions:
         # 1.21.11-rc3 のようなプレリリースは "-" を含むため、範囲と解釈する前に弾く
         raise VersionError(f"{spec} is not a Minecraft release; pre-releases and snapshots are not supported")
     if "-" not in spec:
-        return [select_single(releases, paper_versions, spec)]
+        return [select_single(releases, paper_versions, has_build, spec, paper_channel)]
     lower, upper = (part.strip() for part in spec.split("-", 1))
-    selected = select_range(releases, paper_versions, channel_of, lower, upper or None)
+    selected = select_range(releases, paper_versions, has_build, lower, upper or None, paper_channel)
     if len(selected) > max_versions:
         raise VersionError(
             f"{spec} resolves to {len(selected)} versions, more than the maximum of {max_versions}; "
@@ -137,43 +152,64 @@ def select_versions(
     return selected
 
 
-def select_single(releases: list[str], paper_versions: set[str], version: str) -> str:
+def select_single(
+    releases: list[str],
+    paper_versions: set[str],
+    has_build: Callable[[str, str], bool],
+    version: str,
+    paper_channel: str = DEFAULT_PAPER_CHANNEL,
+) -> str:
     """明示的に1つ指定されたバージョンを検証する。
 
-    STABLE でなくてもビルドがあれば試せるようにし、チャンネルは確認しない。
+    許容するチャンネルのビルドが無ければ、--paper-channel で緩められることを示してエラーにする。
     """
     ensure_supported(releases, version)
     if version not in paper_versions:
         raise VersionError(f"Paper has no builds for {version}")
+    if not has_build(version, paper_channel):
+        raise VersionError(no_accepted_build_message(version, paper_channel))
     return version
 
 
-def select_latest(releases: list[str], paper_versions: set[str], channel_of: Callable[[str], str]) -> str:
-    """新しいリリースから順に見て、Paper の最新ビルドが STABLE な最初のバージョンを返す。"""
+def select_latest(
+    releases: list[str],
+    paper_versions: set[str],
+    has_build: Callable[[str, str], bool],
+    paper_channel: str = DEFAULT_PAPER_CHANNEL,
+) -> str:
+    """新しいリリースから順に見て、Paper に許容するチャンネルのビルドがある最初のバージョンを返す。"""
     for version in releases:
-        # 公開直後のバージョンは Paper が ALPHA/BETA のことが多いので飛ばす
-        if version in paper_versions and channel_of(version) == STABLE_CHANNEL:
+        # 公開直後のバージョンは Paper が ALPHA/BETA のことが多いので、しきい値に満たなければ飛ばす
+        if version in paper_versions and has_build(version, paper_channel):
             return version
-    raise VersionError("no Minecraft release has a stable Paper build")
+    raise VersionError(f"no Minecraft release has a {describe_channels(paper_channel)} Paper build")
 
 
 def select_range(
     releases: list[str],
     paper_versions: set[str],
-    channel_of: Callable[[str], str],
+    has_build: Callable[[str, str], bool],
     lower: str,
     upper: str | None,
+    paper_channel: str = DEFAULT_PAPER_CHANNEL,
 ) -> list[str]:
-    """lower から upper（None なら最新）までのリリースのうち、Paper の STABLE ビルドがあるものを古い順で返す。"""
+    """lower から upper（None なら最新）までのリリースのうち、Paper に許容するビルドがあるものを古い順で返す。"""
     if not lower:
         raise VersionError("a version range needs a lower bound, such as 1.21.6-")
     ensure_supported(releases, lower)
     newest, oldest = range_indices(releases, lower, upper)
     candidates = releases[newest : oldest + 1]
-    selected = [v for v in candidates if v in paper_versions and channel_of(v) == STABLE_CHANNEL]
+    selected = [v for v in candidates if v in paper_versions and has_build(v, paper_channel)]
     if not selected:
-        raise VersionError(f"no release between {lower} and {upper or LATEST} has a stable Paper build")
+        raise VersionError(
+            f"no release between {lower} and {upper or LATEST} has a {describe_channels(paper_channel)} Paper build"
+        )
     return list(reversed(selected))
+
+
+def describe_channels(paper_channel: str) -> str:
+    """エラーメッセージ用に、許容するチャンネルを "stable" や "stable/beta" のように表す。"""
+    return "/".join(channel.lower() for channel in accepted_channels(paper_channel))
 
 
 def range_indices(releases: list[str], lower: str, upper: str | None) -> tuple[int, int]:

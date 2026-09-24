@@ -47,6 +47,23 @@ def test_fixture_name_only_for_fixture_phase():
         StepResult(index=0, phase="test", fixture="arena", action="wait", label="2s", status="passed")
 
 
+def test_step_positions_in_blocks_are_optional_camel_case_fields():
+    plain = StepResult(index=0, action="wait", label="2s", status="passed")
+    assert (plain.parallel, plain.repeat, plain.started_at, plain.finished_at) == (None, None, None, None)
+    data = {
+        "index": 3, "phase": "test", "on": "Alice", "action": "screenshot", "label": "s1", "status": "passed",
+        "parallel": {"block": 0, "lane": 1},
+        "repeat": [{"block": 0, "iteration": 1, "of": 2}, {"block": 1, "iteration": 2, "of": 3}],
+        "startedAt": "2026-09-24T03:02:10.120Z", "finishedAt": "2026-09-24T03:02:11.900Z",
+    }
+    step = StepResult.model_validate(data)
+    dumped = json.loads(step.model_dump_json())
+    assert {key: dumped[key] for key in data} == data
+    # 位置情報が無いことは null で表し、空の一覧は使わない
+    with pytest.raises(ValidationError):
+        StepResult.model_validate(data | {"repeat": []})
+
+
 def test_run_status_and_summary_are_derived_from_tests():
     tests = [_test("passed"), _test("skipped", skip_reason="fail-fast"), _test("error")]
     assert summarize_tests(tests).model_dump() == {"total": 3, "passed": 1, "failed": 0, "error": 1, "skipped": 1}
@@ -61,6 +78,9 @@ def test_json_schema_uses_camel_case():
     test_result = schema["$defs"]["TestResult"]["properties"]
     assert {"skipReason", "logRanges", "startedAt", "durationMs"} <= set(test_result)
     assert set(schema["$defs"]["LogRange"]["properties"]) == {"from", "to"}
+    # repeat は null か空でない一覧（モデルの規則がスキーマにも表れている）
+    repeat = schema["$defs"]["StepResult"]["properties"]["repeat"]["anyOf"]
+    assert {"type": "array", "items": {"$ref": "#/$defs/RepeatInfo"}, "minItems": 1} in repeat
 
 
 def test_fixtures_exist():

@@ -22,8 +22,19 @@ Routes (hash based, so the site works from any sub-path and from `file://`). Ids
 | `#/tests/<testId>` | One test: rows = versions, columns = the test's players, each cell the player's last screenshot (failure in red); links to compare pages for each screenshot name |
 | `#/tests/<testId>/compare/<shot>` | The screenshot named `<shot>` of that test for every version, per player |
 | `#/runs/<runId>` | One run (version): infrastructure failure, tests table, sessions with their logs, logs, environment, plugins. Prev/next move between versions |
-| `#/runs/<runId>/tests/<testId>` | One test in one version: failure, facts, screenshots per player (with a client-log link scoped to the test), steps grouped by phase (harness reset, `beforeEach`, fixtures collapsed unless they failed, then the test's own steps), and links into the log viewer for every `logRanges` entry. Prev/next move to the same test in the neighbouring versions |
+| `#/runs/<runId>/tests/<testId>` | One test in one version: failure, facts, screenshots per player (with a client-log link scoped to the test), steps grouped by phase (harness reset, `beforeEach`, fixtures collapsed unless they failed, then the test's own steps) with parallel blocks and repeat iterations nested inside (see below), and links into the log viewer for every `logRanges` entry. Prev/next move to the same test in the neighbouring versions |
 | `#/runs/<runId>/logs/<index>?from=&to=` | Log viewer for the run's flattened logs (`[...result.logs, ...sessions.flatMap(s => s.logs)]`); `from` / `to` highlight a line range and scroll to it |
+
+## Parallel and repeat steps
+
+fukurou 2.1 expands `parallel` / `repeat` blocks at plan time, so `result.json` only has the flat steps; each step's optional `parallel` (`block`, `lane`) and `repeat` (outermost first) say where it came from (see [`docs/contract.md`](../../docs/contract.md)). [`src/lib/stepTree.ts`](src/lib/stepTree.ts) rebuilds the nesting from those fields: consecutive steps with the same `repeat` entry form one iteration, consecutive steps with the same `parallel.block` form one block, split into lanes. When a step is in both, the one covering more consecutive steps is the outer one (ties go to the repeat).
+
+- Each repeat iteration gets a header row ("REPEAT iteration 2/3", step count, wall time, failures) that collapses its steps. Iterations are open by default when the repeat has at most 10 iterations, otherwise only those with a failure.
+- Each parallel block gets a header row ("PARALLEL 2 lanes at the same time", wall time vs. the sum of the durations) with one time bar per lane, placed by the steps' `startedAt` / `finishedAt`, so overlapping steps show as overlapping bars. Steps without timestamps (not run, or a 2.0 runner) get no bar. The block's rows follow, marked with their lane.
+- A vertical rail on the left of the rows brackets each level (green for parallel, gray for repeat). Phase headers count parallel blocks by wall time, not by the sum of durations.
+- Screenshots stay in plan order, which is iteration order, and the ones taken inside a repeat are captioned `stamp-2 · iteration 2/3`.
+
+The fixture test `stamp-burst` in `ui/fixtures/artifacts/fukurou-paper-1.21.10` covers a repeat of 3 with a two-player screenshot in parallel per iteration, and a parallel block whose lane is a repeat.
 
 ## Log viewer
 
@@ -92,7 +103,7 @@ Commit the updated `ui/dist` together with the source change. The build:
 - inlines the CSS into that script (Vite injects it at startup), so there is no separate stylesheet to load;
 - is deterministic: two builds, also from different checkout paths, produce byte-identical files. CI rebuilds and fails if the committed `ui/dist` differs.
 
-The bundle is about 555 kB (160 kB gzip), of which about 112 kB is CSS. Most of the growth over the Tailwind version is Ark UI's tooltip machinery (zag + floating-ui) behind Chlorophyll's `Tooltip`.
+The bundle is about 565 kB (161 kB gzip), of which about 112 kB is CSS. Most of the growth over the Tailwind version is Ark UI's tooltip machinery (zag + floating-ui) behind Chlorophyll's `Tooltip`.
 
 ## Styling: Panda CSS and Chlorophyll
 
@@ -104,7 +115,7 @@ The bundle is about 555 kB (160 kB gzip), of which about 112 kB is CSS. Most of 
 - Components come from [`src/chlorophyll.ts`](src/chlorophyll.ts), which imports each one from its own directory through the `chlorophyll-components/*` alias (Vite and `tsconfig.json`). The package's public entry points are barrels that also pull in three.js / skinview3d / react-three-fiber, and the package ships TypeScript sources, so the barrel would also type-check components we do not use under this project's stricter compiler options. Add new components to that file and their directory to `include` in `panda.config.ts`.
 - Panda classes are atomic: to override a shared style, merge style objects with `css(baseStyle, { ... })` (see `src/styles.ts`) instead of joining class names with `cx`.
 
-Used components: `Badge` (statuses), `Table` (status grid, tests, steps, plugins), `Button` (links, toggles, log tabs), `Breadcrumb`, `ModalDialog` (screenshot lightbox), `Tooltip` (full hashes and failure messages), `Skeleton` / `Spinner` (loading), `Separator`.
+Used components: `Badge` (statuses, and the `alpha` / `beta` Paper channel next to a version whose `result.minecraft.channel` is not `STABLE`), `Table` (status grid, tests, steps, plugins), `Button` (links, toggles, log tabs), `Breadcrumb`, `ModalDialog` (screenshot lightbox), `Tooltip` (full hashes and failure messages), `Skeleton` / `Spinner` (loading), `Separator`.
 
 `ModalDialog` only starts its exit animation on a backdrop click and has no Escape handling or focus trap. The lightbox adds Escape, keeps Tab inside the dialog, returns focus to the thumbnail, and closes through the same exit animation by clicking the backdrop element for Escape and the Close button (with a timeout in case the animation is disabled).
 
@@ -113,7 +124,7 @@ Used components: `Badge` (statuses), `Table` (status grid, tests, steps, plugins
 ```
 src/contract.ts        TypeScript types for result.json v2 and manifest v2 (mirror the design doc §5)
 src/manifest/          loading the manifest and exposing it through the router context
-src/lib/               pure helpers: asset URLs, formatting, run/test lookups (flatLogs, findTest, ...), log parsing and filtering
+src/lib/               pure helpers: asset URLs, formatting, run/test lookups (flatLogs, findTest, ...), log parsing and filtering, step nesting (stepTree)
 src/chlorophyll.ts     the Chlorophyll components the viewer uses
 src/styles.ts          shared Panda styles (panel, headings, ...)
 src/components/        shared UI (badges, nav, lightbox, thumbnails) and per-page parts: overview/ (status grid),

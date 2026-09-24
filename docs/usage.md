@@ -25,6 +25,7 @@ Resolves a version spec against Mojang's version manifest and the Paper API, and
 | --- | --- | --- |
 | `minecraft-version` | `latest` | Version spec. See [Version specs](#version-specs). |
 | `max-versions` | `16` | Fail when the spec resolves to more versions than this. |
+| `paper-channel` | `stable` | Least stable Paper build channel to accept: `stable` (only `STABLE` builds), `beta` (`BETA` or `STABLE`) or `alpha` (any build). See [Paper channels](#paper-channels). |
 
 ### Outputs
 
@@ -36,12 +37,40 @@ Resolves a version spec against Mojang's version manifest and the Paper API, and
 
 | Spec | Resolves to |
 | --- | --- |
-| `latest` | The newest release whose latest Paper build is `STABLE`. |
-| `1.21.11` | Exactly that version. |
-| `1.21.6-` | Every release from 1.21.6 onward whose latest Paper build is `STABLE`. |
-| `1.20.5-1.21.11` | Every release in that range (both ends included) whose latest Paper build is `STABLE`. |
+| `latest` | The newest release that has a Paper build in the accepted channels. |
+| `1.21.11` | Exactly that version. It is an error when Paper has no build of it in the accepted channels. |
+| `1.21.6-` | Every release from 1.21.6 onward that has a Paper build in the accepted channels. |
+| `1.20.5-1.21.11` | Every release in that range (both ends included) that has a Paper build in the accepted channels. |
 
-Versions are ordered by Mojang's release order. A spec that names a version older than 1.20 (a single version or the lower bound of a range) is an error, because fukurou supports Minecraft 1.20 or later. The same command is available locally as `fukurou versions <spec> [--max-versions N]`. A test's own `versions:` field uses the same syntax minus `latest` (see [Test fields](#test-fields)).
+The accepted channels are set by `paper-channel` (only `STABLE` by default; see [Paper channels](#paper-channels)). Versions are ordered by Mojang's release order. A spec that names a version older than 1.20 (a single version or the lower bound of a range) is an error, because fukurou supports Minecraft 1.20 or later. The same command is available locally as `fukurou versions <spec> [--max-versions N] [--paper-channel CHANNEL]`. A test's own `versions:` field uses the same syntax minus `latest` (see [Test fields](#test-fields)).
+
+### Paper channels
+
+Every Paper build has a channel: `ALPHA` right after a Minecraft release, then `BETA`, then `STABLE`. `paper-channel` (`--paper-channel`) names the least stable channel you accept, and defaults to `stable`:
+
+| Value | Accepted builds |
+| --- | --- |
+| `stable` | `STABLE` |
+| `beta` | `BETA`, `STABLE` |
+| `alpha` | `ALPHA`, `BETA`, `STABLE` |
+
+A release counts for `latest`, ranges and single versions when it has at least one Paper build in an accepted channel, even when its newest build is less stable (the run then uses the newest accepted build). With `alpha`, a release that Paper has only as `ALPHA` builds is picked too. Give the `versions` action and the run action the same value, so that the run finds a build for every version in the matrix:
+
+```yaml
+- uses: morinoparty/fukurou/versions@v2
+  id: versions
+  with:
+    minecraft-version: 1.21.6-
+    paper-channel: alpha
+# ... and in the matrix job:
+- uses: morinoparty/fukurou@v2
+  with:
+    minecraft-version: ${{ matrix.minecraft-version }}
+    paper-channel: alpha
+    accept-eula: "true"
+```
+
+The run uses the newest build of the version in the accepted channels and records its channel in `result.json` (`minecraft.channel`); the viewer marks `ALPHA` and `BETA` runs with a small badge. An explicit `server-build` is used whatever its channel, with a warning when it is less stable than `paper-channel`.
 
 ## `morinoparty/fukurou`
 
@@ -90,9 +119,10 @@ At least one of `suite`, `scenarios`, `scenario-file` and `scenario` must be set
 | `plugins-dir` | | `${{ github.workspace }}` | Directory that contains the plugin jars under test. |
 | `plugins` | | `*.jar` | Glob patterns inside `plugins-dir`, separated by newlines or commas. An empty string installs no plugins. |
 | `dependencies` | | | YAML list of extra plugins to download. See [Dependencies](#dependencies). |
-| `server-properties` | | | Extra `server.properties` lines, one `key=value` per line. They override fukurou's defaults (a flat world, peaceful difficulty, offline mode) and a `server.properties` inside `server-files`. `server-ip`, `server-port`, `enable-rcon`, `rcon.port`, `rcon.password` and `max-players` are managed by fukurou and are ignored with a warning. |
+| `server-properties` | | | Extra `server.properties` lines, one `key=value` per line. They override fukurou's defaults (a flat world, peaceful difficulty, offline mode, whitelist off) and a `server.properties` inside `server-files`. `server-ip`, `server-port`, `enable-rcon`, `rcon.port`, `rcon.password` and `max-players` are managed by fukurou and are ignored with a warning. |
 | `server-files` | | | Directory whose contents are copied into the server directory before it starts (for example `plugins/MyPlugin/config.yml`). |
-| `server-build` | | latest stable | Paper build number. |
+| `server-build` | | newest accepted | Paper build number. Used even when its channel is less stable than `paper-channel` (with a warning). |
+| `paper-channel` | | `stable` | Least stable Paper build channel to accept: `stable`, `beta` or `alpha`. The run uses the newest build in the accepted channels and fails when the version has none. See [Paper channels](#paper-channels). |
 | `java-version` | | `auto` | Java major version for the server. `auto` picks the newer of the version Mojang requires and the version the plugin jars are compiled for. The clients always use Mojang's Java runtime. |
 | `work-dir` | | `$RUNNER_TEMP/fukurou-work` | Working directory for the server, the clients and the caches. |
 | `out-dir` | | `$RUNNER_TEMP/fukurou-out` | Output directory for `result.json`, screenshots and logs. |
@@ -204,6 +234,67 @@ Every test is one scenario file (its id is the file name without the extension) 
 | `use` | `[]` | Names of the suite's `fixtures` to expand before this test's own steps, in this order. |
 | `players` | the suite's `players` | Fully replaces the suite's players for this test when set (a subset is fine). A test with no players anywhere — no suite, and none of its own — is an error. |
 
+## Parallel and repeat steps
+
+Added in fukurou 2.1 (`result.json` stays `schemaVersion: 2`; see [What's new in 2.1](#whats-new-in-21)). A step can be a block instead of a single action, and any player action's `on` can name several players. Both are expanded into a flat list of steps when the test is planned, before anything runs — `fukurou validate` prints the result (see [below](#validate-output)), and `result.json` records only the expanded steps.
+
+### `on` as a list of players
+
+```json
+{ "on": ["Alice", "Bob"], "action": "screenshot", "name": "greeting" }
+```
+
+`on` may be a non-empty list of unique player names instead of a single name. It is shorthand for a `parallel` block with one copy of the step per player — a one-name list is exactly the same as the plain string. The same `name` is fine for every player, because screenshots are stored per player (`tests/<id>/screenshots/<player>/<name>.png`). In a `beforeEach` step or a fixture, a player not declared by the test skips only that player's copy, the same as any other fixture step aimed at a player the test does not declare.
+
+### `parallel`
+
+```json
+{
+  "action": "parallel",
+  "steps": [
+    { "on": "server", "action": "command", "command": "weather clear" },
+    { "on": "Alice", "action": "screenshot", "name": "midday" }
+  ]
+}
+```
+
+`parallel` has no `on`. Its `steps` (1 to 16 after expansion — an `on` list counts one lane per player) run at the same time, each in its own lane, and the block finishes once every lane has finished. If any child fails, the block fails and the steps after it are `skipped` as usual, but lanes that were already running are left to finish and keep their own result. A child may be any action or a `repeat` block. `parallel` cannot contain another `parallel`: an `on` list written directly as a `parallel` child is not nesting — it just adds one lane per player, as above — but a nested `parallel`, or a multi-player `on` list inside a `repeat` child (it is a `parallel` block too), is a validation error, since nested lanes would make the client-input and thread rules ambiguous. Two children must not send client input to the same player at once: `fukurou validate` rejects a `parallel` where two children both use `press_key`, `type_text`, `chat` or `screenshot` on the same player (this also looks inside a `repeat` child). Server actions, `wait`, `wait_for_log` and `assert_no_log` have no such limit and may appear in several children.
+
+### `repeat`
+
+```json
+{ "action": "repeat", "times": 3, "as": "i", "steps": [
+  { "on": "Alice", "action": "screenshot", "name": "shot-${i}" }
+] }
+```
+
+`repeat` has no `on`. `times` is 1 to 100, and `as` (default `i`) names the loop variable and must match `^[a-z][a-z0-9_]*$`. It is unrolled — run `times` times, one after another — while the test is planned, not while it runs. In each iteration, `${<as>}` (1-based) and `${<as>0}` (0-based) are replaced in the `text`, `command`, `pattern`, `name` and `key` of every step inside (`on` is never substituted). A placeholder for a name no enclosing `repeat` defines is a validation error, and so is any `${...}` in these fields outside a `repeat` at all — there is no way to escape it, so a literal `${` cannot appear in these fields outside a `repeat`. A `repeat` may nest inside a `repeat` or a `parallel`, and a `parallel` may nest inside a `repeat`; a nested `repeat`'s `as` must differ from every enclosing one, in both its 1-based and 0-based form (an inner `as: i0` inside an outer `as: i` repeat is the same clash as reusing `i` itself).
+
+`parallel` and `repeat` blocks may also appear in a suite's `beforeEach` and in `fixtures`, with the usual per-player skip rule applying to each expanded copy.
+
+After expansion, screenshot names must still be unique per player within the test (`failure` stays reserved), and a test may have at most 1000 planned steps in total, counting `beforeEach`, every fixture pulled in with `use`, and the test's own `steps`.
+
+### Validate output
+
+`fukurou validate` prints one indented line per expanded step under each test's summary, with `[parallel <block> lane <lane>]` and/or `[repeat <block> <iteration>/<of>]` markers. For [`examples/parallel-repeat.json`](../examples/parallel-repeat.json):
+
+```
+$ fukurou validate --scenario-file examples/parallel-repeat.json
+parallel-repeat: valid (players: 1, steps: 8, planned steps: 8, isolation: reset)
+    0 test server command 'time set noon'
+    1 test - wait '3s'
+    2 test server command 'weather clear' [parallel 0 lane 0]
+    3 test Alice screenshot 'midday' [parallel 0 lane 1]
+    4 test Alice press_key 'F5' [repeat 0 1/2]
+    5 test Alice screenshot 'shot-1' [repeat 0 1/2]
+    6 test Alice press_key 'F5' [repeat 0 2/2]
+    7 test Alice screenshot 'shot-2' [repeat 0 2/2]
+```
+
+### Result fields
+
+Each expanded step in `result.json`'s `tests[].steps` gets optional `parallel` (`{ "block", "lane" }` or `null`) and `repeat` (a list of `{ "block", "iteration", "of" }`, outermost first, or `null`) fields, plus `startedAt` / `finishedAt` timestamps — steps in the same `parallel` block overlap in time, which is how the viewer draws them as concurrent. See [Parallel and repeat blocks (fukurou 2.1)](contract.md#parallel-and-repeat-blocks-fukurou-21) in contract.md for the exact shape, block numbering and how a timeout or a failed lane is recorded.
+
 ## `morinoparty/fukurou/ui`
 
 Downloads the run artifacts of the workflow run, builds one static viewer site from them, uploads the site as a workflow artifact, and optionally publishes it to S3-compatible storage (for example Cloudflare R2). Run it in a job that `needs` the test jobs with `if: always()`, so failed runs are shown too. The site also works when opened from disk (`file://`).
@@ -264,7 +355,7 @@ The actions call the `fukurou` command. You can run it locally with `uvx --from 
 
 | Command | Description |
 | --- | --- |
-| `fukurou versions <spec> [--max-versions N]` | Print the versions a spec resolves to, as a JSON array. |
+| `fukurou versions <spec> [--max-versions N] [--paper-channel CHANNEL]` | Print the versions a spec resolves to, as a JSON array. |
 | `fukurou list [selection] [--minecraft-version X]` | Print the selected test ids in run order, as a JSON array. With `--minecraft-version`, tests `versions:` would skip on it are reported (on stderr) too. |
 | `fukurou validate [selection]` | Check the suite and every selected test without starting anything: one valid line per test on stdout, problems on stderr. Exit 2 on any problem, or when the selection is empty. |
 | `fukurou schema {scenario\|suite\|result}` | Print a JSON Schema (`scenario` is schemaVersion 2, `suite` is v1, `result` is schemaVersion 2). |
@@ -293,7 +384,8 @@ The actions call the `fukurou` command. You can run it locally with `uvx --from 
 | `--dependencies YAML` | | Extra plugins to download. See [Dependencies](#dependencies). |
 | `--server-properties TEXT` | | Extra `server.properties` lines. |
 | `--server-files DIR` | | Files to copy into the server directory. |
-| `--server-build N` | latest stable | Paper build number. |
+| `--server-build N` | newest accepted | Paper build number, used whatever its channel (with a warning when it is less stable than `--paper-channel`). |
+| `--paper-channel {stable,beta,alpha}` | `stable` | Least stable Paper build channel to accept. The run uses the newest build in the accepted channels and exits 2 when the version has none. |
 | `--java PATH` | `$JAVA_HOME/bin/java`, or `java` on `PATH` | Java for the server. |
 | `--client-java PATH` | Mojang's runtime | Java for the clients. |
 | `--work-dir DIR` | `./.fukurou-work` | Working directory. |
@@ -308,6 +400,15 @@ timeout-minutes: 10 + (number of "reset" tests) + 4 * (number of "fresh-server" 
 ```
 
 Tune it down once you have seen a few real runs — the job summary's per-test durations are the easiest way to do that.
+
+## What's new in 2.1
+
+Additive, with one exception (below): `result.json` stays `schemaVersion: 2`, and nothing from 2.0 changed meaning otherwise.
+
+- **[Parallel and repeat steps](#parallel-and-repeat-steps):** a `parallel` block runs its children at once, a `repeat` block unrolls its steps N times with `${i}` placeholders, and a player action's `on` can name several players as shorthand for a `parallel`.
+- `fukurou validate` prints the expanded steps of every test (see [Validate output](#validate-output) above); `fukurou list` is unchanged.
+- `result.json` steps gained optional `parallel`, `repeat`, `startedAt` and `finishedAt` fields — see [Result fields](#result-fields) above and [contract.md](contract.md#parallel-and-repeat-blocks-fukurou-21).
+- **One thing 2.0 accepted is now rejected:** a plain step's `text`, `command`, `pattern`, `name` or `key` containing `${...}` outside a `repeat` is a validation error (previously kept as a literal string). This only matters if a scenario happened to use that exact syntax outside a `repeat`.
 
 ## Migrating from v1
 

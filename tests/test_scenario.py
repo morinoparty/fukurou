@@ -7,8 +7,11 @@ import pytest
 
 from fukurou.scenario import (
     Chat,
+    Parallel,
+    ParallelPosition,
     PlayerSpec,
     PressKey,
+    Repeat,
     ScenarioError,
     ScenarioSource,
     Screenshot,
@@ -18,6 +21,7 @@ from fukurou.scenario import (
     load_scenario,
     parse_scenario,
 )
+from fukurou.scenario.model import expand_steps
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "examples"
 
@@ -165,3 +169,151 @@ def test_rejects_invalid_test_metadata():
         parse_scenario(base | {"use": ["../arena"]})
     with pytest.raises(ScenarioError, match="at least 1 item"):
         parse_scenario(base | {"players": []})
+
+
+# --- parallel / repeat / 複数プレイヤーの on ------------------------------------------------
+
+
+def expanded(*steps, players=({"name": "Alice"}, {"name": "Bob"})):
+    """シナリオを検証し、展開後のステップ（ExpandedStep）の一覧を返す。"""
+    return expand_steps(parse_scenario(scenario(*steps, players=players)).steps)
+
+
+def test_blocks_parse_and_a_single_player_list_is_a_plain_name():
+    parsed = parse_scenario(
+        scenario(
+            {"action": "parallel", "steps": [{"on": ["Alice"], "action": "chat", "text": "hi"}]},
+            {"action": "repeat", "times": 2, "as": "n", "steps": [{"action": "wait", "seconds": 1}]},
+        )
+    )
+    assert parsed.steps == [
+        Parallel(steps=[Chat(on="Alice", text="hi")]),
+        Repeat(times=2, as_="n", steps=[Wait(seconds=1)]),
+    ]
+    with pytest.raises(ScenarioError, match="must be unique"):
+        parse_scenario(scenario({"on": ["Alice", "Alice"], "action": "chat", "text": "hi"}))
+    # ブロックは on を持たない
+    with pytest.raises(ScenarioError, match="does not match any of the expected tags"):
+        parse_scenario(scenario({"on": "Alice", "action": "parallel", "steps": [{"action": "wait", "seconds": 1}]}))
+
+
+def test_repeat_unrolls_with_placeholders_and_positions():
+    steps = expanded(
+        {
+            "action": "repeat",
+            "times": 2,
+            "steps": [
+                {"on": "Alice", "action": "screenshot", "name": "shot-${i}"},
+                {"action": "repeat", "times": 2, "as": "j", "steps": [{"on": "Bob", "action": "press_key", "key": "${j0}"}]},
+            ],
+        }
+    )
+    assert [step.step for step in steps] == [
+        Screenshot(on="Alice", name="shot-1"),
+        PressKey(on="Bob", key="0"),
+        PressKey(on="Bob", key="1"),
+        Screenshot(on="Alice", name="shot-2"),
+        PressKey(on="Bob", key="0"),
+        PressKey(on="Bob", key="1"),
+    ]
+    # 内側の repeat は外側の繰り返しごとに別のブロック番号になる
+    assert [tuple((r.block, r.iteration, r.of) for r in step.repeat) for step in steps] == [
+        ((0, 1, 2),),
+        ((0, 1, 2), (1, 1, 2)),
+        ((0, 1, 2), (1, 2, 2)),
+        ((0, 2, 2),),
+        ((0, 2, 2), (2, 1, 2)),
+        ((0, 2, 2), (2, 2, 2)),
+    ]
+    # 置き換えた後の値にもエイリアスが効く（"Enter" → "Return"）
+    [step] = expanded({"action": "repeat", "times": 1, "steps": [{"on": "Alice", "action": "press_key", "key": "${i}"}]})
+    assert step.step == PressKey(on="Alice", key="1")
+
+
+def test_multi_player_on_becomes_parallel_lanes():
+    steps = expanded(
+        {"on": ["Alice", "Bob"], "action": "screenshot", "name": "view"},
+        {
+            "action": "parallel",
+            "steps": [
+                {"on": ["Alice", "Bob"], "action": "chat", "text": "hi"},
+                {"on": "server", "action": "wait_for_log", "pattern": "hi"},
+            ],
+        },
+    )
+    assert [(step.step.on, step.parallel) for step in steps] == [
+        ("Alice", ParallelPosition(0, 0)),
+        ("Bob", ParallelPosition(0, 1)),
+        # parallel の直接の子の複数プレイヤーの on は、入れ子にせずレーンに広げる
+        ("Alice", ParallelPosition(1, 0)),
+        ("Bob", ParallelPosition(1, 1)),
+        ("server", ParallelPosition(1, 2)),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("step", "message"),
+    [
+        (
+            {"action": "parallel", "steps": [{"action": "parallel", "steps": [{"action": "wait", "seconds": 1}]}]},
+            "cannot be nested",
+        ),
+        (
+            {"action": "parallel", "steps": [{"on": "Alice", "action": "chat", "text": "a"}, {"on": "Alice", "action": "press_key", "key": "t"}]},
+            "parallel children 0 and 1 both send client input .* to Alice",
+        ),
+        (
+            {"action": "parallel", "steps": [{"on": "server", "action": "command", "command": "say"}] * 17},
+            "at most 16 children at once, got 17",
+        ),
+        (
+            {"action": "repeat", "times": 2, "steps": [{"action": "repeat", "times": 2, "as": "i0", "steps": [{"action": "wait", "seconds": 1}]}]},
+            "repeat variable 'i0' clashes with an outer repeat",
+        ),
+        (
+            {"action": "repeat", "times": 2, "steps": [{"on": "Alice", "action": "chat", "text": "${n}"}]},
+            r"step 0 > step 0: text: unknown placeholder '\$\{n\}'",
+        ),
+        ({"action": "repeat", "times": 101, "steps": [{"action": "wait", "seconds": 1}]}, "less than or equal to 100"),
+        ({"action": "repeat", "times": 2, "as": "I", "steps": [{"action": "wait", "seconds": 1}]}, "should match pattern"),
+        (
+            {"action": "repeat", "times": 2, "steps": [{"on": "Alice", "action": "screenshot", "name": "same"}]},
+            "duplicate screenshot names: Alice/same",
+        ),
+        ({"on": "Alice", "action": "screenshot", "name": "shot-${i}"}, "only work inside a repeat"),
+        # 撮影の名前の誤った変数名も、他のフィールドと同じ "unknown placeholder" で報告する
+        (
+            {"action": "repeat", "times": 2, "steps": [{"on": "Alice", "action": "screenshot", "name": "s${I}"}]},
+            r"step 0 > step 0: name: unknown placeholder '\$\{I\}' \(available: \$\{i\}, \$\{i0\}\)",
+        ),
+        # 複数プレイヤーの on で広げたレーンがあっても、衝突は利用者が書いた子の番号で報告する
+        (
+            {"action": "parallel", "steps": [{"on": ["Alice", "Bob"], "action": "screenshot", "name": "s"}, {"on": "Bob", "action": "chat", "text": "a"}]},
+            "parallel children 0 and 1 both send client input .* to Bob",
+        ),
+        ({"on": "server", "action": "wait_for_log", "pattern": "x${2}"}, r"pattern: unknown placeholder '\$\{2\}'"),
+        (
+            {"action": "repeat", "times": 100, "steps": [{"action": "repeat", "times": 11, "as": "j", "steps": [{"action": "wait", "seconds": 1}]}]},
+            "at most 1000 planned steps",
+        ),
+    ],
+)
+def test_block_rules_are_validation_errors(step, message):
+    with pytest.raises(ScenarioError, match=message):
+        parse_scenario(scenario(step, players=({"name": "Alice"}, {"name": "Bob"})))
+
+
+def test_parallel_allows_shared_server_actions_and_log_waits():
+    steps = expanded(
+        {
+            "action": "parallel",
+            "steps": [
+                {"on": "Alice", "action": "chat", "text": "hi"},
+                {"on": "Alice", "action": "wait_for_log", "pattern": "hi"},
+                {"on": "server", "action": "wait_for_log", "pattern": "hi"},
+                {"on": "server", "action": "assert_no_log", "pattern": "error"},
+                {"action": "wait", "seconds": 1},
+            ],
+        }
+    )
+    assert [step.parallel.lane for step in steps] == [0, 1, 2, 3, 4]

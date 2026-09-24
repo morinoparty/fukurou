@@ -14,6 +14,10 @@ inputs:
     description: Fail when the spec resolves to more versions than this.
     required: false
     default: "16"
+  paper-channel:
+    description: 'Least stable Paper build channel to accept: "stable" (only stable builds), "beta" (beta or stable) or "alpha" (any build). "latest" and ranges include only releases with an accepted build, and a single version fails without one.'
+    required: false
+    default: stable
 
 outputs:
   matrix:
@@ -39,8 +43,9 @@ runs:
       env:
         MINECRAFT_VERSION: ${{ inputs.minecraft-version }}
         MAX_VERSIONS: ${{ inputs.max-versions }}
+        PAPER_CHANNEL: ${{ inputs.paper-channel }}
       run: |
         # このアクションは versions/ にあるため、Python プロジェクトは一つ上のディレクトリ
-        matrix="$(uv run --frozen --no-dev --project "$GITHUB_ACTION_PATH/.." fukurou versions "$MINECRAFT_VERSION" --max-versions "$MAX_VERSIONS")"
+        matrix="$(uv run --frozen --no-dev --project "$GITHUB_ACTION_PATH/.." fukurou versions "$MINECRAFT_VERSION" --max-versions "$MAX_VERSIONS" --paper-channel "$PAPER_CHANNEL")"
         echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
         echo "Minecraft versions for \`$MINECRAFT_VERSION\`: \`$matrix\`" >> "$GITHUB_STEP_SUMMARY"

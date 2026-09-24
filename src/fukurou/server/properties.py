@@ -6,6 +6,9 @@ DEFAULT_PROPERTIES: dict[str, str] = {
     # オフラインモードのため、クライアントは Microsoft アカウント無しで参加できる
     "online-mode": "false",
     "enforce-secure-profile": "false",
+    # 26.3 から white-list の既定値が true になり、テスト用のプレイヤーが参加できなくなるため明示的に切る
+    "white-list": "false",
+    "enforce-whitelist": "false",
     # 平坦なワールドにして背景の地形による写り方の揺れを減らす
     "level-type": "minecraft\\:flat",
     # 既定の "{}" だとレイヤー無しとしてエラーになるため明示する（地表は y=-61、足元は y=-60）

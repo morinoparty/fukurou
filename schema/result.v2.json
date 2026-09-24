@@ -231,6 +231,24 @@
       "title": "MinecraftInfo",
       "type": "object"
     },
+    "ParallelInfo": {
+      "properties": {
+        "block": {
+          "title": "Block",
+          "type": "integer"
+        },
+        "lane": {
+          "title": "Lane",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "block",
+        "lane"
+      ],
+      "title": "ParallelInfo",
+      "type": "object"
+    },
     "PlayerInfo": {
       "properties": {
         "name": {
@@ -334,6 +352,29 @@
         "role"
       ],
       "title": "PluginInfo",
+      "type": "object"
+    },
+    "RepeatInfo": {
+      "properties": {
+        "block": {
+          "title": "Block",
+          "type": "integer"
+        },
+        "iteration": {
+          "title": "Iteration",
+          "type": "integer"
+        },
+        "of": {
+          "title": "Of",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "block",
+        "iteration",
+        "of"
+      ],
+      "title": "RepeatInfo",
       "type": "object"
     },
     "ResetInfo": {
@@ -654,6 +695,57 @@
           ],
           "default": null,
           "title": "Screenshot"
+        },
+        "parallel": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParallelInfo"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "repeat": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/RepeatInfo"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repeat"
+        },
+        "startedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Startedat"
+        },
+        "finishedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finishedat"
         }
       },
       "required": [

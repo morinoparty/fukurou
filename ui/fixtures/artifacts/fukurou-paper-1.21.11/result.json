@@ -10,7 +10,7 @@
     "version": "1.21.11",
     "server": "paper",
     "build": 130,
-    "channel": "STABLE"
+    "channel": "ALPHA"
   },
   "java": {
     "server": 21

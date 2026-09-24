@@ -20,15 +20,17 @@ from fukurou.errors import FukurouError, InvalidInputError
 from fukurou.java import default_java, java_major
 from fukurou.mojang import fetch_java_major, fetch_manifest
 from fukurou.net import cached_download
-from fukurou.paper import fetch_project, latest_channel, resolve_build
+from fukurou.paper import PAPER_CHANNELS, channel_accepted, fetch_project, has_accepted_build, resolve_build
 from fukurou.plugins import PluginJar, inspect_plugins, required_java
 from fukurou.result.model import ArenaInfo, PluginInfo, ResetInfo, ScreenshotInfo, SelectionInfo, SuiteInfo
 from fukurou.result.recorder import NOT_RUN, RunRecorder, TestRecorder
 from fukurou.run.artifacts import HARNESS_LOG, RESULT_FILE, ArtifactCollector
 from fukurou.run.harness_log import harness_log
 from fukurou.run.options import RunOptions
-from fukurou.run.session import CLIENT_JOIN_TIMEOUT, GameSession
-from fukurou.runner.client import ClientDiedError, ClientProcess
+from fukurou.run.parallel import live_lanes, plan_blocks, run_parallel_block
+from fukurou.run.session import CLIENT_JOIN_TIMEOUT, DIRTY_STRANDED_REASON, GameSession
+from fukurou.run.step_executor import ServerDied, StepExecutor
+from fukurou.runner.client import ClientProcess
 from fukurou.runner.player_session import PlayerSession
 from fukurou.runner.scenario_runner import CapturedScreenshot, ScenarioRunner
 from fukurou.runner.xvfb import VirtualDisplay
@@ -102,7 +104,11 @@ class RealPlatform:
         # マニフェストは 1 回だけ取得し、versions: の判定と Java の要求の両方に使う
         manifest = fetch_manifest()
         releases = manifest.release_ids()
-        versions = select_versions(spec, releases, fetch_project().version_ids(), latest_channel)
+        # --server-build でビルドを決め打ちする場合はチャンネルで弾かず、paper() で警告だけ出す
+        paper_channel = PAPER_CHANNELS[-1] if self.options.server_build is not None else self.options.paper_channel
+        versions = select_versions(
+            spec, releases, fetch_project().version_ids(), has_accepted_build, paper_channel=paper_channel
+        )
         if len(versions) != 1:
             raise InvalidInputError(f"{spec} must resolve to exactly one version, got {', '.join(versions)}")
         version = versions[0]
@@ -115,9 +121,18 @@ class RealPlatform:
         return fetch_dependency(dependency, cache_dir)
 
     def paper(self, version: str, build: int | None, cache_dir: Path) -> PaperJar:
-        resolved = resolve_build(version, build)
+        resolved = resolve_build(version, build, self.options.paper_channel)
         download = resolved.server_download()
         logger.info("Paper %s build %d (%s)", version, resolved.id, resolved.channel)
+        if not channel_accepted(resolved.channel, self.options.paper_channel):
+            # 決め打ちのビルドはそのまま使うが、しきい値より不安定であることは知らせる
+            logger.warning(
+                "Paper %s build %d is %s, less stable than --paper-channel %s; using it because --server-build was given",
+                version,
+                resolved.id,
+                resolved.channel,
+                self.options.paper_channel,
+            )
         jar = cached_download(download.url, cache_dir / download.name, download.checksums.sha256)
         return PaperJar(path=jar, build=resolved.id, channel=resolved.channel)
 
@@ -139,10 +154,6 @@ class RealPlatform:
         )
         display = VirtualDisplay(logs_dir / f"{name}-xvfb.log")
         return PlayerSession(name=name, client=client, display=display, window_timeout=CLIENT_JOIN_TIMEOUT)
-
-
-class ServerDied(FukurouError):
-    """テストの途中でサーバーが死んだ（RCON 不通またはプロセス終了）。run の失敗（phase server）にする。"""
 
 
 class RelaunchFailed(FukurouError):
@@ -367,49 +378,40 @@ class SuiteRun:
 
     def _abandon_test(self, test: TestSpec, recorder: TestRecorder, reason: str) -> None:
         """走り切れなかったテストを skipped にし、セッションの実行済み一覧からも外す。"""
+        # skip() は終端なので、置き去りにしたレーンが遅れて記録しても無視される。残っていることだけログに出す
+        lanes = live_lanes()
+        if lanes:
+            logger.warning("%s: abandoned while %s still running (%s)", test.id, "a lane is" if len(lanes) == 1 else "lanes are", ", ".join(lanes))
         recorder.skip(reason)
         session_tests = self.recorder.sessions[self.session.index].tests
         if test.id in session_tests:
             session_tests.remove(test.id)
 
     def _run_steps(self, test: TestSpec, recorder: TestRecorder, runner: ScenarioRunner) -> None:
-        """beforeEach → fixtures → steps を順に実行し、最初の失敗で止める。残りは skipped。"""
-        for index, planned in enumerate(test.steps):
-            if planned.skip_reason is not None:
-                recorder.step_skipped(index, planned.skip_reason)
+        """beforeEach → fixtures → steps を順に実行し、最初の失敗で止める。残りは skipped。
+
+        parallel ブロックはレーンごとのスレッドで同時に実行し、全レーンが終わってから続きを判断する。
+        """
+        executor = StepExecutor(test, recorder, runner, self._record_screenshot)
+        for block in plan_blocks(test.steps):
+            if block.all_skipped:
+                # 参加しないプレイヤー向けのステップは期限に関わらず理由付きで記録する
+                for lane in block.lanes:
+                    for index, planned in lane.steps:
+                        recorder.step_skipped(index, planned.skip_reason)
                 continue
-            if recorder.elapsed_seconds > test.timeout:
-                recorder.fail("timeout", f"the test exceeded its timeout of {test.timeout:g}s before step {index}")
+            remaining = test.timeout - recorder.elapsed_seconds
+            if remaining < 0:
+                recorder.fail("timeout", f"{executor.timeout_message()} before step {block.first_index}")
                 break
-            logger.info("step %d (%s): %r", index, planned.phase, planned.step)
-            started = time.monotonic()
-            try:
-                captured = runner.run_step(planned.step)
-            except ClientDiedError as error:
-                logger.error("step %d: %s", index, error)
-                recorder.step_failed(index, _elapsed_ms(started), str(error), phase="client")
-                break
-            except ServerUnavailableError as error:
-                recorder.step_failed(index, _elapsed_ms(started), str(error))
-                raise ServerDied(str(error)) from error
-            except KeyboardInterrupt:
-                raise
-            except Exception as error:  # noqa: BLE001 - ステップの失敗はどの例外でもテストの失敗として記録する
-                if not isinstance(error, FukurouError):
-                    logger.exception("step %d raised an unexpected error", index)
-                message = str(error) if isinstance(error, FukurouError) else f"{type(error).__name__}: {error}"
-                # 入力や撮影の失敗（xdotool の失敗、スクリーンショットが出ない）は、クライアントが死んだ結果のことがある。
-                # その場合はプラグインの失敗ではなくクライアントの死亡（error / client）として記録する
-                died = _dead_client(runner)
-                if died is not None:
-                    logger.error("step %d: %s (after: %s)", index, died, message)
-                    recorder.step_failed(index, _elapsed_ms(started), str(died), phase="client")
+            if block.parallel is None:
+                index, planned = block.lanes[0].steps[0]
+                if not executor.run(index, planned):
                     break
-                logger.error("step %d failed: %s", index, message)
-                recorder.step_failed(index, _elapsed_ms(started), message)
-                break
-            screenshot = self._record_screenshot(recorder, captured, index) if captured is not None else None
-            recorder.step_passed(index, _elapsed_ms(started), screenshot=screenshot)
+            else:
+                run_parallel_block(block, executor, deadline=time.monotonic() + remaining)
+                if recorder.failure is not None:
+                    break
         if recorder.failure is None:
             logger.info("test %s passed", test.id)
 
@@ -418,7 +420,9 @@ class SuiteRun:
         if recorder.failure is not None:
             logger.error("test %s %s: %s", test.id, recorder.status, recorder.failure.message)
             self._capture_failure_screenshots(recorder, runner)
-            # 画面が開いたままかもしれないプレイヤーは、次に使う前に再起動する
+            # 置き去りにしたレーンがまだ操作しているかもしれないプレイヤーと、画面が開いたままかもしれない
+            # プレイヤーは、次に使う前に再起動する（前者の理由を優先して残す）
+            self.session.mark_dirty(runner.stranded, DIRTY_STRANDED_REASON)
             self.session.mark_dirty(runner.touched)
         recorder.set_log_ranges(self.session.log_ranges())
         recorder.finish()
@@ -561,6 +565,11 @@ class SuiteRun:
         for player in runner.players.values():
             if not player.running:
                 continue
+            if player.name in runner.stranded:
+                # 置き去りにしたレーンがまだこの画面へ入力しているかもしれない。2 つのスレッドから同じウィンドウを
+                # 操作しないよう撮らない（クライアントは次のテストの前に起動し直す）
+                logger.warning("%s: skipping the failure screenshot; the abandoned lane may still be using the client", player.name)
+                continue
             # 撮影の間だけウィンドウを待つ時間を短くする（再起動後のウィンドウ探しは元の時間で待つ）
             timeout = player.window_timeout
             player.window_timeout = FAILURE_WINDOW_TIMEOUT
@@ -601,16 +610,3 @@ def plugin_info(plugin: PluginJar, role: str, source: str | None = None) -> Plug
 def _summary_text(result) -> str:
     summary = result.summary
     return f"{summary.passed} passed, {summary.failed} failed, {summary.error} error, {summary.skipped} skipped"
-
-
-def _elapsed_ms(started: float) -> int:
-    return int((time.monotonic() - started) * 1000)
-
-
-def _dead_client(runner: ScenarioRunner) -> ClientDiedError | None:
-    """テストの参加プレイヤーのクライアントが死んでいればその例外、全員生きていれば None。"""
-    try:
-        runner.check_players_alive()
-    except ClientDiedError as error:
-        return error
-    return None

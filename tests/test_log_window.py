@@ -1,6 +1,7 @@
 """ログファイルの増分読み取りウィンドウ（LogWindow）のテスト。"""
 
 import os
+import threading
 
 from fukurou.result.model import LogRange
 from fukurou.runner.log_window import LogWindow
@@ -80,3 +81,35 @@ def test_replaced_file_is_counted_from_its_start(tmp_path):
     append(path, "new 1\n")
     assert window.read() == "new 1\n"
     assert window.line_range() == LogRange(from_line=1, to=1)
+
+
+def test_concurrent_reads_from_several_threads_see_every_line(tmp_path):
+    """parallel のレーンは同じサーバーログのウィンドウを同時に読む。読み足しが競合して行が落ちたり二重になったりしない。"""
+    path = tmp_path / "server.log"
+    append(path, "before\n")
+    window = LogWindow(path)
+    window.mark()
+    lines = 200
+    seen: list[str] = []
+    errors: list[BaseException] = []
+
+    def reader() -> None:
+        try:
+            for _ in range(lines):
+                seen.append(window.read())
+        except BaseException as error:  # noqa: BLE001 - スレッドの中の失敗をテストで見えるようにする
+            errors.append(error)
+
+    threads = [threading.Thread(target=reader) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for number in range(lines):
+        append(path, f"line {number}\n")
+    for thread in threads:
+        thread.join()
+    assert errors == []
+    expected = "".join(f"line {number}\n" for number in range(lines))
+    assert window.read() == expected
+    assert window.line_range() == LogRange(from_line=2, to=lines + 1)
+    # どの時点の read() も、先頭からの連続した行の並び（前方一致）になっている
+    assert all(expected.startswith(text) for text in seen)

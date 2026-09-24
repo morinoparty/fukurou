@@ -9,9 +9,11 @@ import ctypes
 import os
 import shutil
 import subprocess
+import threading
 import time
 
 from fukurou.errors import FukurouError
+from fukurou.runner.cancellation import pause
 
 
 class InputError(FukurouError):
@@ -33,8 +35,11 @@ class MinecraftWindow:
         self.window_id = window_id
 
     @classmethod
-    def wait_for(cls, display: str, timeout: float) -> "MinecraftWindow":
-        """指定ディスプレイに Minecraft のウィンドウが表示されるまで待ち、見つかったウィンドウを返す。"""
+    def wait_for(cls, display: str, timeout: float, stop: threading.Event | None = None) -> "MinecraftWindow":
+        """指定ディスプレイに Minecraft のウィンドウが表示されるまで待ち、見つかったウィンドウを返す。
+
+        stop を渡すと、待ちの途中でイベントが立った時点で StepCancelled になる（parallel のレーンの打ち切り用）。
+        """
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             for option, query in WINDOW_QUERIES:
@@ -42,7 +47,7 @@ class MinecraftWindow:
                 if ids:
                     # 1つのディスプレイには1クライアントしか起動しないので、最後に作られたものを使う
                     return cls(display, int(ids[-1]))
-            time.sleep(0.5)
+            pause(0.5, stop)
         raise InputError(f"Minecraft window did not appear on {display} within {timeout:.0f} seconds")
 
     def focus(self) -> None:

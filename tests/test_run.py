@@ -6,6 +6,8 @@
 
 import json
 from pathlib import Path
+import threading
+import time
 
 import pytest
 
@@ -14,6 +16,7 @@ from fukurou.result.model import ResultV2
 from fukurou.run.isolation import PARKING_SPOT
 from fukurou.run.options import RunOptions
 from fukurou.run.suite_run import PaperJar, ResolvedVersion, SuiteRun
+from fukurou.runner.cancellation import pause
 from fukurou.runner.client import ClientDiedError
 from fukurou.runner.x11_input import InputError
 from fukurou.scenario import Selection
@@ -58,6 +61,12 @@ class FakeWorld:
         # chat のたびに result.json を読んで残す（テストごとに書き直されていることの確認用）
         self.result_path: Path | None = None
         self.snapshots: list[dict] = []
+        # 撮影にかける秒数と、(プレイヤー, 開始, 終了) の記録。parallel のレーンが本当に重なって走ったかの確認用
+        self.screenshot_delay = 0.0
+        self.screenshot_times: list[tuple[str, float, float]] = []
+        # True なら撮影の待ちが stop イベントを見る（本物の PlayerSession と同じ）。False なら止められない待ち
+        # （xdotool の中のような、猶予を過ぎても戻らないレーンの再現用）
+        self.cooperative_screenshots = False
 
 
 class FakeServer:
@@ -163,16 +172,16 @@ class FakePlayer:
         with self.latest_log.open("a", encoding="utf-8") as file:
             file.write(f"[12:00:00] [Render thread/INFO]: {line}\n")
 
-    def press_key(self, keysym: str) -> None:
+    def press_key(self, keysym: str, stop=None) -> None:
         self.check_alive()
         self.keys.append(keysym)
         if keysym == "F5":
             self.perspective += 1
 
-    def type_text(self, text: str) -> None:
+    def type_text(self, text: str, stop=None) -> None:
         self.check_alive()
 
-    def chat(self, text: str) -> None:
+    def chat(self, text: str, stop=None) -> None:
         self.check_alive()
         if self.world.result_path is not None and self.world.result_path.exists():
             self.world.snapshots.append(json.loads(self.world.result_path.read_text(encoding="utf-8")))
@@ -204,12 +213,18 @@ class FakePlayer:
         self.normalized += 1
         self.perspective = 0
 
-    def take_screenshot(self, destination: Path) -> tuple[int, int]:
+    def take_screenshot(self, destination: Path, stop=None) -> tuple[int, int]:
         self.check_alive()
         if self.world.interrupt_failure_shot and destination.name == "failure.png":
             raise KeyboardInterrupt
+        started = time.monotonic()
+        if self.world.cooperative_screenshots:
+            pause(self.world.screenshot_delay, stop)
+        else:
+            time.sleep(self.world.screenshot_delay)
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(b"\x89PNG fake")
+        self.world.screenshot_times.append((self.name, started, time.monotonic()))
         return 1280, 720
 
     def check_alive(self) -> None:
@@ -288,6 +303,7 @@ def make_options(tmp_path: Path, selection: Selection, **overrides) -> RunOption
         server_properties="",
         server_files=None,
         server_build=None,
+        paper_channel="stable",
         java=tmp_path / "java",
         client_java=None,
         work_dir=tmp_path / "work",
@@ -783,3 +799,391 @@ def test_a_server_start_failure_is_a_run_error(tmp_path, world):
     assert result["failure"]["phase"] == "server-start"
     assert statuses(result) == {"a": "skipped"} and by_id(result, "a")["skipReason"] == "not run"
     assert result["sessions"][0]["finishedAt"] is not None
+
+
+# --- parallel / repeat --------------------------------------------------------------
+
+
+def parallel(*steps: dict) -> dict:
+    return {"action": "parallel", "steps": list(steps)}
+
+
+def repeat(times: int, *steps: dict, **fields) -> dict:
+    return {"action": "repeat", "times": times, "steps": list(steps), **fields}
+
+
+def lane_threads() -> list[str]:
+    return [thread.name for thread in threading.enumerate() if thread.name.startswith("lane-")]
+
+
+def test_parallel_screenshots_of_two_players_overlap_in_time(tmp_path, world):
+    world.screenshot_delay = 0.3
+    scenarios = {"a": {"steps": [{"on": ["Alice", "Bob"], "action": "screenshot", "name": "both"}, WAIT]}}
+    code, result = run(tmp_path, world, scenarios)
+    assert code == 0 and statuses(result) == {"a": "passed"}
+    a = by_id(result, "a")
+    # 展開後: beforeEach, Alice の撮影（lane 0）, Bob の撮影（lane 1）, wait
+    assert [(s["on"], s["action"], s["parallel"], s["repeat"]) for s in a["steps"]] == [
+        ("server", "command", None, None),
+        ("Alice", "screenshot", {"block": 0, "lane": 0}, None),
+        ("Bob", "screenshot", {"block": 0, "lane": 1}, None),
+        (None, "wait", None, None),
+    ]
+    assert [s["status"] for s in a["steps"]] == ["passed"] * 4
+    assert sorted((s["player"], s["name"], s["stepIndex"]) for s in a["screenshots"]) == [("Alice", "both", 1), ("Bob", "both", 2)]
+    # 2 人の撮影の時間が重なっている（逐次なら Bob の開始は Alice の終了より後になる）
+    (_, alice_start, alice_end), (_, bob_start, bob_end) = sorted(world.screenshot_times)
+    assert alice_start < bob_end and bob_start < alice_end
+    for step in a["steps"][1:3]:
+        assert step["startedAt"] <= step["finishedAt"] and step["durationMs"] >= 250
+        assert step["startedAt"].endswith("Z") and len(step["startedAt"]) == len("2026-09-24T03:02:14.120Z")
+    assert lane_threads() == []
+
+
+def test_a_failing_child_fails_the_block_while_its_sibling_completes(tmp_path, world):
+    scenarios = {
+        "a": {
+            "steps": [
+                parallel(
+                    wait_for("never appears", timeout=0.1),
+                    repeat(2, chat("Bob", "/b ${i}"), {"action": "wait", "seconds": 0.2}),
+                ),
+                shot("Alice", "after"),
+            ],
+        },
+    }
+    code, result = run(tmp_path, world, scenarios)
+    assert code == 1 and statuses(result) == {"a": "failed"}
+    a = by_id(result, "a")
+    # レーン 0 は失敗、レーン 1（repeat）は最後まで走って passed、ブロックの後の撮影は skipped
+    assert [(s["status"], s["parallel"], s["repeat"]) for s in a["steps"][1:]] == [
+        ("failed", {"block": 0, "lane": 0}, None),
+        ("passed", {"block": 0, "lane": 1}, [{"block": 0, "iteration": 1, "of": 2}]),
+        ("passed", {"block": 0, "lane": 1}, [{"block": 0, "iteration": 1, "of": 2}]),
+        ("passed", {"block": 0, "lane": 1}, [{"block": 0, "iteration": 2, "of": 2}]),
+        ("passed", {"block": 0, "lane": 1}, [{"block": 0, "iteration": 2, "of": 2}]),
+        ("skipped", None, None),
+    ]
+    assert a["failure"]["phase"] == "scenario" and a["failure"]["stepIndex"] == 1
+    assert "did not match 'never appears'" in a["failure"]["message"]
+    assert a["steps"][6]["error"] is None and a["steps"][6]["startedAt"] is None
+    # 兄弟は失敗の後も最後まで動いた（chat が 2 回、プレースホルダーは番号に置き換わる）
+    bob_log = world.players["Bob"].latest_log.read_text(encoding="utf-8")
+    assert "<Bob> /b 1" in bob_log and "<Bob> /b 2" in bob_log
+    assert sorted(s["player"] for s in a["screenshots"]) == ["Alice", "Bob"]
+    assert lane_threads() == []
+
+
+def test_wait_for_log_in_two_lanes_shares_the_server_log_window(tmp_path, world):
+    scenarios = {
+        "a": {
+            "steps": [
+                parallel(
+                    {"action": "wait_for_log", "on": "server", "pattern": "Alice issued server command: /a", "timeout": 2},
+                    {"action": "wait_for_log", "on": "server", "pattern": "Bob issued server command: /b", "timeout": 2},
+                    repeat(1, {"action": "wait", "seconds": 0.2}, chat("Alice", "/a")),
+                    repeat(1, {"action": "wait", "seconds": 0.3}, chat("Bob", "/b")),
+                ),
+                {"on": "server", "action": "assert_no_log", "pattern": "Unknown command"},
+            ],
+        },
+    }
+    code, result = run(tmp_path, world, scenarios)
+    assert code == 0 and statuses(result) == {"a": "passed"}
+    a = by_id(result, "a")
+    assert [s["status"] for s in a["steps"]] == ["passed"] * 8
+    assert [s["parallel"]["lane"] for s in a["steps"][1:7]] == [0, 1, 2, 2, 3, 3]
+    # 待ちのレーンはチャットのレーンより後に終わる（同じウィンドウを別スレッドが読んでいた）
+    waits = [s["finishedAt"] for s in a["steps"][1:3]]
+    chats = [s["finishedAt"] for s in (a["steps"][4], a["steps"][6])]
+    assert max(chats) <= max(waits)
+
+
+def test_repeat_iterations_are_recorded_with_their_numbers(tmp_path, world):
+    scenarios = {
+        "a": {
+            "steps": [
+                repeat(3, chat("Alice", "/st ${i}"), repeat(2, shot("Alice", "shot-${i}-${j}"), **{"as": "j"})),
+            ],
+        },
+    }
+    code, result = run(tmp_path, world, scenarios)
+    assert code == 0 and statuses(result) == {"a": "passed"}
+    a = by_id(result, "a")
+    steps = a["steps"][1:]
+    assert [s["label"] for s in steps] == [
+        "/st 1", "shot-1-1", "shot-1-2", "/st 2", "shot-2-1", "shot-2-2", "/st 3", "shot-3-1", "shot-3-2",
+    ]
+    assert steps[0]["repeat"] == [{"block": 0, "iteration": 1, "of": 3}]
+    # 内側の repeat は外側の繰り返しごとに別のブロック番号になる
+    assert steps[2]["repeat"] == [{"block": 0, "iteration": 1, "of": 3}, {"block": 1, "iteration": 2, "of": 2}]
+    assert steps[7]["repeat"] == [{"block": 0, "iteration": 3, "of": 3}, {"block": 3, "iteration": 1, "of": 2}]
+    assert all(s["parallel"] is None and s["status"] == "passed" for s in steps)
+    assert "<Alice> /st 3" in world.players["Alice"].latest_log.read_text(encoding="utf-8")
+    assert [s["name"] for s in a["screenshots"]] == ["shot-1-1", "shot-1-2", "shot-2-1", "shot-2-2", "shot-3-1", "shot-3-2"]
+
+
+def test_a_soft_timeout_during_a_parallel_block_stops_the_lanes(tmp_path, world):
+    scenarios = {
+        "slow": {
+            "timeout": 1,
+            "steps": [
+                parallel(
+                    {"action": "wait", "seconds": 30},
+                    wait_for("never", timeout=30),
+                    repeat(2, {"action": "wait", "seconds": 0.05}),
+                ),
+                WAIT,
+            ],
+        },
+        "next": {"steps": [WAIT]},
+    }
+    started = time.monotonic()
+    code, result = run(tmp_path, world, scenarios)
+    assert time.monotonic() - started < 5
+    assert code == 1 and statuses(result) == {"slow": "error", "next": "passed"}
+    slow = by_id(result, "slow")
+    assert slow["failure"]["phase"] == "timeout" and slow["failure"]["stepIndex"] in (1, 2)
+    assert "exceeded its timeout of 1s" in slow["failure"]["message"]
+    # 待っていた 2 本のレーンは打ち切られて failed、短い repeat のレーンは終わっていて passed、後続は skipped
+    assert [s["status"] for s in slow["steps"]] == ["passed", "failed", "failed", "passed", "passed", "skipped"]
+    assert all("exceeded its timeout" in s["error"] for s in slow["steps"][1:3])
+    assert slow["durationMs"] < 5000
+    # スレッドは残っていない
+    assert lane_threads() == []
+
+
+def test_a_parallel_fixture_skips_the_copies_for_absent_players(tmp_path, world):
+    suite = """\
+scenarios: [scenarios/*.json]
+players: [{name: Alice, op: true}, {name: Bob}]
+settle: 0
+fixtures:
+  greet:
+    - action: parallel
+      steps:
+        - {on: [Alice, Bob], action: chat, text: "/hello"}
+        - {on: server, action: command, command: "say hi"}
+beforeEach:
+  - {on: server, action: command, command: "say next test"}
+"""
+    scenarios = {
+        "both": {"use": ["greet"], "steps": [WAIT]},
+        "alone": {"use": ["greet"], "players": [{"name": "Alice", "op": True}], "steps": [WAIT]},
+    }
+    code, result = run(tmp_path, world, scenarios, suite=suite)
+    assert code == 0 and statuses(result) == {"both": "passed", "alone": "passed"}
+    both = by_id(result, "both")
+    assert [(s["on"], s["status"], s["parallel"]) for s in both["steps"][1:4]] == [
+        ("Alice", "passed", {"block": 0, "lane": 0}),
+        ("Bob", "passed", {"block": 0, "lane": 1}),
+        ("server", "passed", {"block": 0, "lane": 2}),
+    ]
+    alone = by_id(result, "alone")
+    assert [(s["on"], s["status"], s["error"]) for s in alone["steps"][1:4]] == [
+        ("Alice", "passed", None),
+        ("Bob", "skipped", "player Bob is not in this test"),
+        ("server", "passed", None),
+    ]
+    assert alone["steps"][2]["parallel"] == {"block": 0, "lane": 1} and alone["steps"][2]["startedAt"] is None
+    assert "<Alice> /hello" in world.players["Alice"].latest_log.read_text(encoding="utf-8")
+    assert world.players["Alice"].latest_log.read_text(encoding="utf-8").count("/hello") == 2
+    assert world.players["Bob"].latest_log.read_text(encoding="utf-8").count("/hello") == 1
+
+
+def test_a_server_death_in_one_lane_cancels_the_waiting_siblings(tmp_path, world):
+    scenarios = {
+        "a": {
+            "steps": [
+                parallel(
+                    repeat(1, chat("Alice", "server-die"), {"on": "server", "action": "command", "command": "list"}),
+                    {"action": "wait", "seconds": 30},
+                ),
+            ],
+        },
+        "b": {"steps": [WAIT]},
+    }
+    started = time.monotonic()
+    code, result = run(tmp_path, world, scenarios)
+    assert time.monotonic() - started < 5
+    assert code == 1 and result["status"] == "error" and result["failure"]["phase"] == "server"
+    assert statuses(result) == {"a": "failed", "b": "skipped"}
+    a = by_id(result, "a")
+    assert [s["status"] for s in a["steps"]] == ["passed", "passed", "failed", "failed"]
+    assert a["failure"]["stepIndex"] == 2 and "server is not running" in a["failure"]["message"]
+    # 待っていた兄弟は期限切れではなくサーバーの死亡で打ち切られた
+    assert a["steps"][3]["error"].startswith("cancelled: server is not running")
+    assert lane_threads() == []
+
+
+def test_an_interrupt_inside_a_lane_abandons_the_test(tmp_path, world):
+    scenarios = {
+        "a": {"steps": [parallel(chat("Alice", "interrupt"), {"action": "wait", "seconds": 30})]},
+        "b": {"steps": [WAIT]},
+    }
+    started = time.monotonic()
+    code, result = run(tmp_path, world, scenarios)
+    assert time.monotonic() - started < 5
+    assert code == 1 and result["failure"]["phase"] == "interrupted"
+    assert statuses(result) == {"a": "skipped", "b": "skipped"}
+    assert by_id(result, "a")["skipReason"] == "interrupted" and by_id(result, "a")["steps"] == []
+    assert lane_threads() == []
+
+
+def test_a_real_parallel_result_passes_through_the_site_builder(tmp_path, world):
+    """ランナーが実際に書いた parallel / repeat の result.json（タイムアウトを含む）がビューア用のサイトにそのまま載る。
+
+    ビューアのフィクスチャは手書きなので、TestRecorder の出力の形（durationMs が null で finishedAt がある
+    打ち切られたレーン、時刻の無い skipped）をここで build_manifest に通して確かめる。
+    """
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ui" / "scripts"))
+    import build_manifest
+
+    scenarios = {
+        "burst": {
+            "steps": [
+                repeat(2, chat("Alice", "/st ${i}"), {"on": ["Alice", "Bob"], "action": "screenshot", "name": "shot-${i}"}),
+            ],
+        },
+        "slow": {
+            "timeout": 1,
+            "steps": [parallel({"action": "wait", "seconds": 30}, repeat(2, {"action": "wait", "seconds": 0.05})), WAIT],
+        },
+    }
+    code, result = run(tmp_path, world, scenarios)
+    assert code == 1 and statuses(result) == {"burst": "passed", "slow": "error"}
+
+    # CI で artifact をダウンロードしたときと同じ <artifact 名>/ の配置にする
+    artifacts = tmp_path / "artifacts"
+    (artifacts / "fukurou-paper-1.21.11").parent.mkdir()
+    (tmp_path / "out").rename(artifacts / "fukurou-paper-1.21.11")
+    viewer = tmp_path / "viewer"
+    viewer.mkdir()
+    (viewer / "index.html").write_text("<!doctype html>", encoding="utf-8")
+    site = tmp_path / "site"
+    argv = ["--artifacts-dir", str(artifacts), "--out", str(site), "--viewer-dir", str(viewer), "--title", "Test"]
+    assert build_manifest.main(argv, env={}) == 0
+
+    manifest = json.loads((site / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["warnings"] == []
+    (site_run,) = manifest["runs"]
+    # サイトに載った result もランナーの契約のまま（ビューアの ResultV2 と同じ形）
+    ResultV2.model_validate(site_run["result"])
+    assert site_run["result"] == result
+    burst = by_id(site_run["result"], "burst")
+    assert [(s["on"], s["label"], s["parallel"], [r["iteration"] for r in s["repeat"] or []]) for s in burst["steps"][1:]] == [
+        ("Alice", "/st 1", None, [1]),
+        ("Alice", "shot-1", {"block": 0, "lane": 0}, [1]),
+        ("Bob", "shot-1", {"block": 0, "lane": 1}, [1]),
+        ("Alice", "/st 2", None, [2]),
+        ("Alice", "shot-2", {"block": 1, "lane": 0}, [2]),
+        ("Bob", "shot-2", {"block": 1, "lane": 1}, [2]),
+    ]
+    for shot_entry in burst["screenshots"]:
+        assert (site / site_run["base"] / shot_entry["path"]).is_file()
+    slow = by_id(site_run["result"], "slow")
+    assert [s["status"] for s in slow["steps"]] == ["passed", "failed", "passed", "passed", "skipped"]
+    # 打ち切られたレーンは時刻を持ち（バーを描ける）、走らなかったステップは持たない
+    cut = slow["steps"][1]
+    assert cut["parallel"] == {"block": 0, "lane": 0} and cut["startedAt"] and cut["finishedAt"]
+    assert slow["steps"][4]["startedAt"] is None and slow["steps"][4]["finishedAt"] is None
+    assert manifest["summary"]["tests"] == {"total": 2, "passed": 1, "failed": 0, "error": 1, "skipped": 0}
+
+
+def join_lane_threads(timeout: float = 10.0) -> None:
+    """置き去りにしたレーンが終わるまで待つ（止められない待ちの中のレーンは run の終了後も残る）。"""
+    for thread in threading.enumerate():
+        if thread.name.startswith("lane-"):
+            thread.join(timeout)
+
+
+def test_a_lane_left_behind_after_the_grace_strands_its_player(tmp_path, world, monkeypatch, caplog):
+    """猶予を過ぎても戻らないレーンのプレイヤーは、失敗時の撮影で触らず、次のテストの前に起動し直す。"""
+    import functools
+
+    from fukurou.run import suite_run
+    from fukurou.run.parallel import run_parallel_block
+
+    monkeypatch.setattr(suite_run, "run_parallel_block", functools.partial(run_parallel_block, grace=0.1))
+    # 止められない待ち（xdotool の中のような）が期限 + 猶予より長く続く
+    world.screenshot_delay = 1.5
+    scenarios = {
+        "a-slow": {"timeout": 0.3, "steps": [parallel(shot("Bob", "late"), {"action": "wait", "seconds": 30})]},
+        "b-next": {"steps": [chat("Bob", "/again"), WAIT]},
+    }
+    code, result = run(tmp_path, world, scenarios)
+    assert code == 1 and statuses(result) == {"a-slow": "error", "b-next": "passed"}
+    slow = by_id(result, "a-slow")
+    assert slow["failure"]["phase"] == "timeout"
+    # 置き去りにした撮影のステップは timeout で記録され、戻っていないので durationMs は無い
+    bob_shot = slow["steps"][1]
+    assert bob_shot["on"] == "Bob" and bob_shot["status"] == "failed" and bob_shot["durationMs"] is None
+    assert "exceeded its timeout" in bob_shot["error"]
+    # 失敗時の撮影は Alice だけ（Bob の画面はレーンがまだ使っているかもしれない）
+    assert [(s["player"], s["name"]) for s in slow["screenshots"]] == [("Alice", "failure")]
+    # Bob は次のテストの前に起動し直され、Alice はそのまま
+    assert world.players["Bob"].launches == 2 and world.players["Alice"].launches == 1
+    assert "Bob: relaunching the client (a lane of the previous test was still driving the client" in caplog.text
+    # レーンが遅れて終わっても、書き出した結果は変わらない（遅れた撮影は載らない）
+    join_lane_threads()
+    assert lane_threads() == []
+    assert [(s["player"], s["name"]) for s in by_id(read_result(tmp_path), "a-slow")["screenshots"]] == [("Alice", "failure")]
+
+
+def test_a_cooperative_screenshot_lane_returns_at_the_timeout(tmp_path, world):
+    """撮影の待ちが stop を見るので、期限切れのレーンは猶予を待たずに戻り、失敗時の撮影も全員分撮れる。"""
+    world.cooperative_screenshots = True
+    world.screenshot_delay = 1.0
+    scenarios = {
+        "a-slow": {"timeout": 0.3, "steps": [parallel(shot("Bob", "late"), {"action": "wait", "seconds": 30})]},
+        "b-next": {"steps": [chat("Bob", "/again"), WAIT]},
+    }
+    started = time.monotonic()
+    code, result = run(tmp_path, world, scenarios)
+    assert time.monotonic() - started < 5
+    assert code == 1 and statuses(result) == {"a-slow": "error", "b-next": "passed"}
+    slow = by_id(result, "a-slow")
+    bob_shot = slow["steps"][1]
+    assert bob_shot["status"] == "failed" and "exceeded its timeout" in bob_shot["error"]
+    # 撮影の待ち（1 秒）を待ち切らずに戻った
+    assert bob_shot["durationMs"] is not None and bob_shot["durationMs"] < 900
+    # 失敗時の撮影は stop を渡さないので、立ったままのイベントに打ち切られずに 2 人とも撮れている
+    assert sorted((s["player"], s["name"]) for s in slow["screenshots"]) == [("Alice", "failure"), ("Bob", "failure")]
+    # レーンは置き去りになっていないので、Bob は起動し直さない
+    assert world.players["Bob"].launches == 1
+    assert lane_threads() == []
+
+
+def test_real_platform_applies_the_paper_channel(tmp_path, monkeypatch, caplog):
+    """RealPlatform は --paper-channel でバージョンとビルドを絞り、--server-build の決め打ちは警告だけにする。"""
+    from fukurou import mojang
+    from fukurou.paper import PaperBuild, PaperProject
+    from fukurou.run import suite_run
+
+    manifest = mojang.MojangManifest.model_validate({"versions": [{"id": "26.3", "type": "release"}]})
+    monkeypatch.setattr(suite_run, "fetch_manifest", lambda: manifest)
+    monkeypatch.setattr(suite_run, "fetch_project", lambda: PaperProject(versions={"26.3": ["26.3"]}))
+    monkeypatch.setattr(suite_run, "has_accepted_build", lambda version, channel: channel == "alpha")
+    monkeypatch.setattr(suite_run, "fetch_java_major", lambda version, manifest: 25)
+    download = {"name": "paper.jar", "checksums": {"sha256": "0"}, "url": "u"}
+    alpha = PaperBuild.model_validate({"id": 40, "channel": "ALPHA", "downloads": {"server:default": download}})
+    monkeypatch.setattr(suite_run, "resolve_build", lambda version, build, channel: alpha)
+    monkeypatch.setattr(suite_run, "cached_download", lambda url, path, sha256: path)
+    selection = Selection(scenario_text="{}")
+
+    # 既定の stable では ALPHA しかないバージョンを選べない
+    stable = suite_run.RealPlatform(make_options(tmp_path, selection, minecraft_version="26.3"), tmp_path)
+    with pytest.raises(InvalidInputError, match="--paper-channel"):
+        stable.resolve("26.3")
+    # alpha なら選べて、記録されるチャンネルは ALPHA
+    allowed = suite_run.RealPlatform(make_options(tmp_path, selection, paper_channel="alpha"), tmp_path)
+    assert allowed.resolve("26.3").version == "26.3"
+    assert allowed.paper("26.3", None, tmp_path).channel == "ALPHA"
+    assert "less stable" not in caplog.text
+    # --server-build の決め打ちは stable でも使い、しきい値を下回ることを警告する
+    pinned = suite_run.RealPlatform(make_options(tmp_path, selection, server_build=40), tmp_path)
+    assert pinned.resolve("26.3").version == "26.3"
+    assert pinned.paper("26.3", 40, tmp_path).build == 40
+    assert "less stable than --paper-channel stable" in caplog.text

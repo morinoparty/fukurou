@@ -133,6 +133,31 @@ export interface StepResult {
   error: string | null;
   /** screenshot アクションのときだけ、artifact ルートからの相対パス */
   screenshot: string | null;
+  /** fukurou 2.1: parallel ブロックの中のステップならその位置。2.0 の runner は書かないので undefined もあり得る */
+  parallel?: ParallelInfo | null;
+  /** fukurou 2.1: 囲む repeat ブロック（外側から順）。repeat の外なら null / undefined。空配列にはならない */
+  repeat?: RepeatInfo[] | null;
+  /** fukurou 2.1: 実行を始めた / 終えた時刻（ISO 8601）。実行しなかったステップは null */
+  startedAt?: string | null;
+  finishedAt?: string | null;
+}
+
+/** parallel ブロックの中の位置。同じ block のステップは同時に実行され、同じ lane のステップは順に実行された */
+export interface ParallelInfo {
+  /** テスト内の parallel ブロックの通し番号（0 始まり、計画順） */
+  block: number;
+  /** ブロックの中の子の番号（0 始まり） */
+  lane: number;
+}
+
+/** repeat ブロックの何回目か */
+export interface RepeatInfo {
+  /** テスト内の repeat ブロックの通し番号（0 始まり、計画順） */
+  block: number;
+  /** 1 始まりの繰り返し番号 */
+  iteration: number;
+  /** 繰り返しの回数（times） */
+  of: number;
 }
 
 export interface RunFailure {

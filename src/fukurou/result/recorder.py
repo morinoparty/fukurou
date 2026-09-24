@@ -5,8 +5,10 @@ RunRecorder は run 全体（セッション・プレイヤー・run の失敗�
 """
 
 from datetime import UTC, datetime
+import logging
 import os
 from pathlib import Path
+import threading
 import time
 from typing import TYPE_CHECKING
 
@@ -19,8 +21,10 @@ from fukurou.result.model import (
     LogInfo,
     LogRange,
     MinecraftInfo,
+    ParallelInfo,
     PlayerInfo,
     PluginInfo,
+    RepeatInfo,
     ResetInfo,
     ResultV2,
     RunFailure,
@@ -44,7 +48,9 @@ from fukurou.result.steps import step_label, step_target
 from fukurou.runner.portablemc import PORTABLEMC_VERSION
 
 if TYPE_CHECKING:
-    from fukurou.scenario import TestSpec
+    from fukurou.scenario import PlannedStep, TestSpec
+
+logger = logging.getLogger(__name__)
 
 SERVER_KIND = "paper"
 # 発見直後のスタブで全テストに付ける理由。ジョブが途中で消えても「走らなかった」と分かる
@@ -58,6 +64,15 @@ def utc_timestamp(moment: datetime) -> str:
 
 def now_timestamp() -> str:
     return utc_timestamp(datetime.now(UTC))
+
+
+def step_timestamp(moment: datetime) -> str:
+    """ステップの開始・終了時刻はミリ秒精度で表す。parallel のステップの重なりは秒精度では見えないため。"""
+    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.") + f"{moment.microsecond // 1000:03d}Z"
+
+
+def now_step_timestamp() -> str:
+    return step_timestamp(datetime.now(UTC))
 
 
 class TestRecorder:
@@ -78,19 +93,10 @@ class TestRecorder:
         self.duration_ms: int | None = None
         self._started_monotonic: float | None = None
         self._finished = False
+        # parallel ブロックのレーンは別スレッドから記録するため、ステップと失敗の更新はこのロックで直列にする
+        self._lock = threading.Lock()
         # 全ステップを skipped として用意し、実行した分だけ置き換える（fixture 名は phase と対にする）
-        self.steps = [
-            StepResult(
-                index=index,
-                phase=planned.phase,
-                fixture=planned.fixture,
-                on=step_target(planned.step),
-                action=planned.step.action,
-                label=step_label(planned.step),
-                status="skipped",
-            )
-            for index, planned in enumerate(spec.steps)
-        ]
+        self.steps = [_initial_step(index, planned) for index, planned in enumerate(spec.steps)]
 
     @property
     def id(self) -> str:
@@ -123,52 +129,86 @@ class TestRecorder:
         if reset.error is not None:
             self.fail("reset", reset.error)
 
-    def step_passed(self, index: int, duration_ms: int, screenshot: str | None = None) -> None:
-        self._update_step(index, status="passed", duration_ms=duration_ms, screenshot=screenshot)
+    def step_started(self, index: int) -> None:
+        """ステップの実行を始めた時刻を記録する。parallel のステップはこれで重なりが分かる。"""
+        self._update_step(index, started_at=now_step_timestamp())
 
-    def step_failed(self, index: int, duration_ms: int, error: str, phase: TestFailurePhase | None = None) -> None:
+    def step_passed(self, index: int, duration_ms: int, screenshot: str | None = None) -> None:
+        # 判定と更新は 1 つの臨界区間で行う。間にロックを手放すと、メインスレッドが期限切れで failed と記録した
+        # 直後にこのレーンが passed で上書きし、timeout のエラーを持った passed のステップができてしまう
+        with self._lock:
+            if self.steps[index].status == "failed":
+                # 期限切れで timeout と記録した後に、置き去りにしたレーンが遅れて終わった。ハーネスの判断を優先し、
+                # そのステップが遅れて撮ったスクリーンショットも載せない（failed のステップを指す項目にしない）
+                logger.warning("step %d passed after it was recorded as failed; keeping the failure", index)
+                self.screenshots = [shot for shot in self.screenshots if not (shot.step_index == index and shot.path == screenshot)]
+                return
+            # error は明示的に消し、以前の記録が残らないようにする
+            self._update_step_locked(
+                index, status="passed", duration_ms=duration_ms, error=None, screenshot=screenshot, finished_at=now_step_timestamp()
+            )
+
+    def step_failed(self, index: int, duration_ms: int | None, error: str, phase: TestFailurePhase | None = None) -> None:
         """ステップの失敗。失敗の段階は既定ではそのステップの層（beforeEach / fixture / test → scenario）。
 
         クライアントの死亡のようにハーネス側の原因なら phase を指定し、テストを error にする。
+        parallel で複数のレーンが失敗した場合は、先に（時間順で）失敗したステップが failure になる。
         """
-        self._update_step(index, status="failed", duration_ms=duration_ms, error=error)
-        if phase is None:
-            step_phase = self.steps[index].phase
-            phase = "scenario" if step_phase == "test" else step_phase
-        self.fail(phase, error, step_index=index)
+        with self._lock:
+            if self._finished:
+                # 期限切れの後に遅れて終わったレーンの記録。書き出し済みの結果は変えない
+                logger.warning("step %d finished after the test was closed; ignoring its failure", index)
+                return
+            self.steps[index] = self.steps[index].model_copy(
+                update={"status": "failed", "duration_ms": duration_ms, "error": error, "finished_at": now_step_timestamp()}
+            )
+            if phase is None:
+                step_phase = self.steps[index].phase
+                phase = "scenario" if step_phase == "test" else step_phase
+            self._fail(phase, error, step_index=index)
 
     def step_skipped(self, index: int, reason: str | None = None) -> None:
         self._update_step(index, status="skipped", error=reason)
 
     def add_screenshot(self, info: ScreenshotInfo) -> None:
-        self.screenshots.append(info)
+        with self._lock:
+            if self._finished:
+                logger.warning("screenshot %s/%s was taken after the test was closed; ignoring it", info.player, info.name)
+                return
+            self.screenshots.append(info)
 
     def set_log_ranges(self, ranges: dict[str, LogRange]) -> None:
         self.log_ranges = dict(ranges)
 
     def skip(self, reason: str) -> None:
-        """走らなかった（または走り切れなかった）テストにする。契約どおり実行の痕跡は残さない。"""
-        self.skip_reason = reason
-        self.session = None
-        self.reset = None
-        self.failure = None
-        self.screenshots = []
-        self.log_ranges = None
-        self.started_at = None
-        self.duration_ms = None
-        self.steps = [
-            step.model_copy(update={"status": "skipped", "duration_ms": None, "error": None, "screenshot": None})
-            for step in self.steps
-        ]
+        """走らなかった（または走り切れなかった）テストにする。契約どおり実行の痕跡は残さない。
+
+        finish() と同じく終端の状態なので、以後の遅れたレーンの記録（中断で置き去りにしたレーンの
+        スクリーンショットや失敗）は無視する。skip() の後に start() されることは無い。
+        """
+        with self._lock:
+            self._finished = True
+            self.skip_reason = reason
+            self.session = None
+            self.reset = None
+            self.failure = None
+            self.screenshots = []
+            self.log_ranges = None
+            self.started_at = None
+            self.duration_ms = None
+            # ブロック内の位置（parallel / repeat）は計画の事実なので残し、実行の痕跡だけを消す
+            cleared = {"status": "skipped", "duration_ms": None, "error": None, "screenshot": None, "started_at": None, "finished_at": None}
+            self.steps = [step.model_copy(update=cleared) for step in self.steps]
 
     def fail(self, phase: TestFailurePhase, message: str, step_index: int | None = None) -> None:
         """最初の失敗だけを記録する。後続の失敗は最初の失敗の結果であることが多いため。"""
-        if self.failure is None:
-            self.failure = TestFailure(phase=phase, message=message, step_index=step_index)
+        with self._lock:
+            self._fail(phase, message, step_index)
 
     def finish(self) -> None:
-        """実行を終える。失敗が無ければ passed になる。"""
-        self._finished = True
+        """実行を終える。失敗が無ければ passed になる。以後の遅れたステップの記録は無視する。"""
+        with self._lock:
+            self._finished = True
         if self._started_monotonic is not None:
             self.duration_ms = int((time.monotonic() - self._started_monotonic) * 1000)
 
@@ -198,8 +238,37 @@ class TestRecorder:
             duration_ms=self.duration_ms,
         )
 
+    def _fail(self, phase: TestFailurePhase, message: str, step_index: int | None) -> None:
+        # 呼び出し側が _lock を持っている前提
+        if self.failure is None:
+            self.failure = TestFailure(phase=phase, message=message, step_index=step_index)
+
     def _update_step(self, index: int, **changes) -> None:
+        with self._lock:
+            self._update_step_locked(index, **changes)
+
+    def _update_step_locked(self, index: int, **changes) -> None:
+        # 呼び出し側が _lock を持っている前提
+        if self._finished:
+            logger.warning("step %d was updated after the test was closed; ignoring %s", index, sorted(changes))
+            return
         self.steps[index] = self.steps[index].model_copy(update=changes)
+
+
+def _initial_step(index: int, planned: "PlannedStep") -> StepResult:
+    """計画したステップの実行前の記録（skipped）。ブロック内の位置は計画からそのまま写す。"""
+    return StepResult(
+        index=index,
+        phase=planned.phase,
+        fixture=planned.fixture,
+        on=step_target(planned.step),
+        action=planned.step.action,
+        label=step_label(planned.step),
+        status="skipped",
+        parallel=None if planned.parallel is None else ParallelInfo(block=planned.parallel.block, lane=planned.parallel.lane),
+        # 契約では空の一覧は不可なので、repeat の外は None にする
+        repeat=[RepeatInfo(block=r.block, iteration=r.iteration, of=r.of) for r in planned.repeat] or None,
+    )
 
 
 class RunRecorder:

@@ -41,4 +41,19 @@ Rcon issued server command: /tp Alice 0.5 -49 0.5 0 30
 Rcon issued server command: /tp Bob 0.5 -49 8.5 180 -15
 Alice issued server command: /st :sleeping-face:
 [MineStamp] Alice sent stamp :sleeping-face:
+Rcon issued server command: /gamemode survival Alice
+Rcon issued server command: /tp Alice 0.5 -60 -8.5 0 0
+Rcon issued server command: /gamemode survival Bob
+Rcon issued server command: /tp Bob 0.5 -60 -8.5 0 0
+Rcon issued server command: /fill -16 -60 -16 15 -37 15 minecraft:air
+Rcon issued server command: /kill @e[type=!player]
+Rcon issued server command: /time set noon
+Rcon issued server command: /weather clear
+[Server] fukurou: next test
+Alice issued server command: /st :thinking-face:
+[MineStamp] Alice sent stamp :thinking-face:
+Alice issued server command: /st :thinking-face:
+[MineStamp] Alice sent stamp :thinking-face:
+Alice issued server command: /st :thinking-face:
+[MineStamp] Alice sent stamp :thinking-face:
 Stopping server

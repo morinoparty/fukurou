@@ -16,7 +16,7 @@ from pydantic import (
 )
 
 from fukurou.scenario.common import NonEmptyStr, PlayerName
-from fukurou.scenario.model import Isolation, PlayerSpec, SafeName, Step, check_players, check_screenshots
+from fukurou.scenario.model import Isolation, PlayerSpec, SafeName, Step, check_players, check_screenshots, expand_steps
 
 # fill コマンドが 1 回で変更できるブロック数の既定の上限（gamerule commandModificationBlockLimit）。
 # gamerule は変えずに済むよう、アリーナをこの範囲に収める
@@ -86,16 +86,14 @@ class Suite(BaseModel):
     @model_validator(mode="after")
     def _check_references(self) -> "Suite":
         check_players(self.players)
-        # fixture ごとに、スクリーンショット名の重複と予約名を検証する（テストとの重複は展開時に見る）
-        for name, steps in self.fixtures.items():
+        # fixture ごとに、ブロックの規則とスクリーンショット名の重複・予約名を展開して検証する
+        # （テストとの重複と、テスト全体のステップ数の上限は discovery の展開時に見る）
+        groups = [*((f"fixture {name!r}", steps) for name, steps in self.fixtures.items()), ("beforeEach", self.before_each)]
+        for label, steps in groups:
             try:
-                check_screenshots(steps)
+                check_screenshots([item.step for item in expand_steps(steps)])
             except ValueError as error:
-                raise ValueError(f"fixture {name!r}: {error}") from error
-        try:
-            check_screenshots(self.before_each)
-        except ValueError as error:
-            raise ValueError(f"beforeEach: {error}") from error
+                raise ValueError(f"{label}: {error}") from error
         return self
 
     def with_origin(self, source: str, sha256: str, directory: Path) -> "Suite":

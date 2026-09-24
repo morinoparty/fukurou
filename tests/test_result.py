@@ -6,7 +6,7 @@ import re
 
 import pytest
 
-from fukurou.result.model import LogRange, ResetInfo, ResultV2, ScreenshotInfo
+from fukurou.result.model import LogRange, ParallelInfo, RepeatInfo, ResetInfo, ResultV2, ScreenshotInfo
 from fukurou.result.recorder import NOT_RUN, RunRecorder, TestRecorder
 from fukurou.scenario import Selection, discover_tests
 
@@ -180,3 +180,87 @@ def test_ci_info_is_read_from_github_actions_env():
         "runAttempt": "2",
         "serverUrl": "https://github.com",
     }
+
+
+def test_steps_carry_their_block_positions_and_timestamps(tmp_path):
+    """parallel / repeat の位置は計画から写し、実行したステップだけが startedAt / finishedAt を持つ。"""
+    scenarios = tmp_path / "scenarios"
+    scenarios.mkdir()
+    (scenarios / "blocks.json").write_text(
+        json.dumps({"players": [{"name": "Alice"}, {"name": "Bob"}], "steps": [
+            {"action": "repeat", "times": 2, "steps": [
+                {"on": ["Alice", "Bob"], "action": "screenshot", "name": "shot-${i}"},
+            ]},
+            {"action": "wait", "seconds": 1},
+        ]}),
+        encoding="utf-8",
+    )
+    _, (spec,) = discover_tests(Selection(scenario_files=[scenarios / "blocks.json"]))
+    recorder = TestRecorder(spec)
+    assert [(s.parallel, s.repeat) for s in recorder.steps] == [
+        (ParallelInfo(block=0, lane=0), [RepeatInfo(block=0, iteration=1, of=2)]),
+        (ParallelInfo(block=0, lane=1), [RepeatInfo(block=0, iteration=1, of=2)]),
+        (ParallelInfo(block=1, lane=0), [RepeatInfo(block=0, iteration=2, of=2)]),
+        (ParallelInfo(block=1, lane=1), [RepeatInfo(block=0, iteration=2, of=2)]),
+        (None, None),
+    ]
+    recorder.start(0)
+    recorder.step_started(0)
+    recorder.step_passed(0, 5)
+    recorder.step_started(1)
+    recorder.step_failed(1, 7, "boom")
+    recorder.finish()
+    result = json.loads(recorder.build().model_dump_json(by_alias=True))
+    first, second, *rest = result["steps"]
+    assert first["parallel"] == {"block": 0, "lane": 0} and first["repeat"] == [{"block": 0, "iteration": 1, "of": 2}]
+    # ステップの時刻はミリ秒精度の UTC
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z", first["startedAt"])
+    assert first["startedAt"] <= first["finishedAt"] and second["finishedAt"] is not None
+    assert all(step["startedAt"] is None and step["finishedAt"] is None for step in rest)
+    assert result["failure"]["stepIndex"] == 1
+    # skip は実行の痕跡を消すが、ブロック内の位置は残す
+    recorder.skip("interrupted")
+    assert recorder.steps[0].started_at is None and recorder.steps[0].finished_at is None
+    assert recorder.steps[0].parallel == ParallelInfo(block=0, lane=0)
+
+
+def test_late_updates_after_finish_are_ignored_and_a_failure_is_kept(specs):
+    """置き去りにしたレーンが遅れて終わっても、閉じたテストの記録と timeout の判断は変わらない。"""
+    recorder = TestRecorder(specs[0])
+    recorder.start(0)
+    recorder.step_started(0)
+    recorder.step_failed(0, None, "the test exceeded its timeout of 1s during step 0", phase="timeout")
+    # 遅れて届いた passed はハーネスの判断（failed）を上書きせず、そのステップが遅れて撮った画像も載せない
+    recorder.add_screenshot(ScreenshotInfo(player="Alice", name="shot", path="late.png", width=1, height=1, step_index=0))
+    recorder.step_passed(0, 2000, screenshot="late.png")
+    assert recorder.steps[0].status == "failed" and recorder.steps[0].screenshot is None and recorder.screenshots == []
+    recorder.finish()
+    recorder.step_passed(1, 1)
+    recorder.step_failed(2, 1, "late failure")
+    recorder.add_screenshot(ScreenshotInfo(player="Alice", name="late", path="x.png", width=1, height=1))
+    assert [step.status for step in recorder.steps] == ["failed", "skipped", "skipped", "skipped"]
+    assert recorder.screenshots == [] and recorder.failure.phase == "timeout"
+    assert recorder.status == "error"
+
+
+def test_skip_is_terminal_and_ignores_late_lane_updates(specs):
+    """中断で放棄したテストに、置き去りにしたレーンが遅れて記録しても痕跡が残らない。"""
+    recorder = TestRecorder(specs[0])
+    recorder.start(0)
+    recorder.step_started(0)
+    recorder.skip("interrupted")
+    recorder.add_screenshot(ScreenshotInfo(player="Alice", name="shot", path="late.png", width=1, height=1, step_index=0))
+    recorder.step_passed(0, 10, screenshot="late.png")
+    recorder.step_failed(1, 10, "late failure")
+    result = recorder.build()
+    assert (result.status, result.skip_reason, result.failure, result.screenshots, result.steps) == ("skipped", "interrupted", None, [], [])
+    assert [step.status for step in recorder.steps] == ["skipped"] * 4
+
+
+def test_a_passed_step_never_keeps_a_stale_error(specs):
+    recorder = TestRecorder(specs[0])
+    recorder.start(0)
+    # skipped の理由（error）が入ったステップが後で走って通っても、error は残らない
+    recorder.step_skipped(0, "player Bob is not in this test")
+    recorder.step_passed(0, 10)
+    assert recorder.steps[0].status == "passed" and recorder.steps[0].error is None

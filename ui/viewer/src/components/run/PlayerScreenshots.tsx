@@ -1,9 +1,10 @@
 import { Link } from "@tanstack/react-router";
 import { css } from "styled-system/css";
 import { Button } from "../../chlorophyll";
-import type { ManifestRun, ResultV2, TestResult } from "../../contract";
+import type { ManifestRun, ResultV2, ScreenshotInfo, TestResult } from "../../contract";
 import { findLogIndex } from "../../lib/logs";
 import { flatLogs, playersOf, screenshotsOf } from "../../lib/runs";
+import { iterationLabel } from "../../lib/stepTree";
 import { buttonLink } from "../../styles";
 import { ScreenshotThumb } from "../ScreenshotThumb";
 
@@ -21,7 +22,8 @@ interface PlayerScreenshotsProps {
 }
 
 /**
- * 1 テストのスクリーンショットをプレイヤーごとに撮影順で並べ（failure は赤枠で最後）、
+ * 1 テストのスクリーンショットをプレイヤーごとに撮影順で並べ（failure は赤枠で最後。
+ * repeat の中で撮ったものは計画順 = 回の順に並び、説明に何回目かを添える）、
  * そのプレイヤーのクライアントログ（このテストの行範囲付き）へのリンクを添える
  */
 export function PlayerScreenshots({ run, result, test }: PlayerScreenshotsProps) {
@@ -65,7 +67,13 @@ export function PlayerScreenshots({ run, result, test }: PlayerScreenshotsProps)
             {shots.length > 0 ? (
               <div className={grid}>
                 {shots.map((shot) => (
-                  <ScreenshotThumb key={`${shot.name}:${shot.path}`} run={run} testId={test.id} shot={shot} />
+                  <ScreenshotThumb
+                    key={`${shot.name}:${shot.path}`}
+                    run={run}
+                    testId={test.id}
+                    shot={shot}
+                    caption={shotCaption(test, shot)}
+                  />
                 ))}
               </div>
             ) : (
@@ -76,4 +84,11 @@ export function PlayerScreenshots({ run, result, test }: PlayerScreenshotsProps)
       })}
     </div>
   );
+}
+
+/** サムネイルの説明。repeat の中で撮ったスクリーンショットには "stamp-2 · iteration 2/3" のように何回目かを添える */
+function shotCaption(test: TestResult, shot: ScreenshotInfo): string {
+  const step = shot.stepIndex === null ? undefined : test.steps.find((candidate) => candidate.index === shot.stepIndex);
+  const iteration = iterationLabel(step?.repeat);
+  return iteration ? `${shot.name} · ${iteration}` : shot.name;
 }

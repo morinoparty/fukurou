@@ -3,7 +3,7 @@
   "id": "paper-1.21.10",
   "status": "passed",
   "fukurou": {
-    "version": "2.0.0",
+    "version": "2.1.0",
     "portablemc": "5.0.4"
   },
   "minecraft": {
@@ -65,8 +65,8 @@
     }
   ],
   "summary": {
-    "total": 3,
-    "passed": 3,
+    "total": 4,
+    "passed": 4,
     "failed": 0,
     "error": 0,
     "skipped": 0
@@ -83,7 +83,8 @@
       ],
       "tests": [
         "stamp-thinking-face",
-        "stamp-sleeping-face"
+        "stamp-sleeping-face",
+        "stamp-burst"
       ],
       "logs": [
         {
@@ -632,9 +633,566 @@
       "durationMs": 30200
     },
     {
+      "id": "stamp-burst",
+      "name": "stamp-burst",
+      "order": 2,
+      "source": "file:game-test/scenarios/stamp-burst.json",
+      "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "tags": [
+        "stamps",
+        "parallel"
+      ],
+      "isolation": "reset",
+      "timeout": 600,
+      "versions": null,
+      "players": [
+        {
+          "name": "Alice",
+          "op": true
+        },
+        {
+          "name": "Bob",
+          "op": false
+        }
+      ],
+      "session": 0,
+      "status": "passed",
+      "skipReason": null,
+      "reset": {
+        "durationMs": 3300,
+        "error": null
+      },
+      "steps": [
+        {
+          "index": 0,
+          "phase": "beforeEach",
+          "fixture": null,
+          "on": "server",
+          "action": "command",
+          "label": "say fukurou: next test",
+          "status": "passed",
+          "durationMs": 9,
+          "error": null,
+          "screenshot": null,
+          "parallel": null,
+          "repeat": null,
+          "startedAt": "2026-09-24T03:03:48.300Z",
+          "finishedAt": "2026-09-24T03:03:48.309Z"
+        },
+        {
+          "index": 1,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "chat",
+          "label": "/st :thinking-face:",
+          "status": "passed",
+          "durationMs": 307,
+          "error": null,
+          "screenshot": null,
+          "parallel": null,
+          "repeat": [
+            {
+              "block": 0,
+              "iteration": 1,
+              "of": 3
+            }
+          ],
+          "startedAt": "2026-09-24T03:03:48.309Z",
+          "finishedAt": "2026-09-24T03:03:48.616Z"
+        },
+        {
+          "index": 2,
+          "phase": "test",
+          "fixture": null,
+          "on": "server",
+          "action": "wait_for_log",
+          "label": "Alice issued server command: /st :thinking-face:",
+          "status": "passed",
+          "durationMs": 391,
+          "error": null,
+          "screenshot": null,
+          "parallel": null,
+          "repeat": [
+            {
+              "block": 0,
+              "iteration": 1,
+              "of": 3
+            }
+          ],
+          "startedAt": "2026-09-24T03:03:48.616Z",
+          "finishedAt": "2026-09-24T03:03:49.007Z"
+        },
+        {
+          "index": 3,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "screenshot",
+          "label": "stamp-1",
+          "status": "passed",
+          "durationMs": 1863,
+          "error": null,
+          "screenshot": "tests/stamp-burst/screenshots/Alice/stamp-1.png",
+          "parallel": {
+            "block": 0,
+            "lane": 0
+          },
+          "repeat": [
+            {
+              "block": 0,
+              "iteration": 1,
+              "of": 3
+            }
+          ],
+          "startedAt": "2026-09-24T03:03:49.007Z",
+          "finishedAt": "2026-09-24T03:03:50.870Z"
+        },
+        {
+          "index": 4,
+          "phase": "test",
+          "fixture": null,
+          "on": "Bob",
+          "action": "screenshot",
+          "label": "stamp-1",
+          "status": "passed",
+          "durationMs": 1893,
+          "error": null,
+          "screenshot": "tests/stamp-burst/screenshots/Bob/stamp-1.png",
+          "parallel": {
+            "block": 0,
+            "lane": 1
+          },
+          "repeat": [
+            {
+              "block": 0,
+              "iteration": 1,
+              "of": 3
+            }
+          ],
+          "startedAt": "2026-09-24T03:03:49.011Z",
+          "finishedAt": "2026-09-24T03:03:50.904Z"
+        },
+        {
+          "index": 5,
+          "phase": "test",
+          "fixture": null,
+          "on": null,
+          "action": "wait",
+          "label": "6s",
+          "status": "passed",
+          "durationMs": 6003,
+          "error": null,
+          "screenshot": null,
+          "parallel": null,
+          "repeat": [
+            {
+              "block": 0,
+              "iteration": 1,
+              "of": 3
+            }
+          ],
+          "startedAt": "2026-09-24T03:03:50.904Z",
+          "finishedAt": "2026-09-24T03:03:56.907Z"
+        },
+        {
+          "index": 6,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "chat",
+          "label": "/st :thinking-face:",
+          "status": "passed",
+          "durationMs": 314,
+          "error": null,
+          "screenshot": null,
+          "parallel": null,
+          "repeat": [
+            {
+              "block": 0,
+              "iteration": 2,
+              "of": 3
+            }
+          ],
+          "startedAt": "2026-09-24T03:03:56.907Z",
+          "finishedAt": "2026-09-24T03:03:57.221Z"
+        },
+        {
+          "index": 7,
+          "phase": "test",
+          "fixture": null,
+          "on": "server",
+          "action": "wait_for_log",
+          "label": "Alice issued server command: /st :thinking-face:",
+          "status": "passed",
+          "durationMs": 402,
+          "error": null,
+          "screenshot": null,
+          "parallel": null,
+          "repeat": [
+            {
+              "block": 0,
+              "iteration": 2,
+              "of": 3
+            }
+          ],
+          "startedAt": "2026-09-24T03:03:57.221Z",
+          "finishedAt": "2026-09-24T03:03:57.623Z"
+        },
+        {
+          "index": 8,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "screenshot",
+          "label": "stamp-2",
+          "status": "passed",
+          "durationMs": 1876,
+          "error": null,
+          "screenshot": "tests/stamp-burst/screenshots/Alice/stamp-2.png",
+          "parallel": {
+            "block": 1,
+            "lane": 0
+          },
+          "repeat": [
+            {
+              "block": 0,
+              "iteration": 2,
+              "of": 3
+            }
+          ],
+          "startedAt": "2026-09-24T03:03:57.623Z",
+          "finishedAt": "2026-09-24T03:03:59.499Z"
+        },
+        {
+          "index": 9,
+          "phase": "test",
+          "fixture": null,
+          "on": "Bob",
+          "action": "screenshot",
+          "label": "stamp-2",
+          "status": "passed",
+          "durationMs": 1876,
+          "error": null,
+          "screenshot": "tests/stamp-burst/screenshots/Bob/stamp-2.png",
+          "parallel": {
+            "block": 1,
+            "lane": 1
+          },
+          "repeat": [
+            {
+              "block": 0,
+              "iteration": 2,
+              "of": 3
+            }
+          ],
+          "startedAt": "2026-09-24T03:03:57.627Z",
+          "finishedAt": "2026-09-24T03:03:59.503Z"
+        },
+        {
+          "index": 10,
+          "phase": "test",
+          "fixture": null,
+          "on": null,
+          "action": "wait",
+          "label": "6s",
+          "status": "passed",
+          "durationMs": 6003,
+          "error": null,
+          "screenshot": null,
+          "parallel": null,
+          "repeat": [
+            {
+              "block": 0,
+              "iteration": 2,
+              "of": 3
+            }
+          ],
+          "startedAt": "2026-09-24T03:03:59.503Z",
+          "finishedAt": "2026-09-24T03:04:05.506Z"
+        },
+        {
+          "index": 11,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "chat",
+          "label": "/st :thinking-face:",
+          "status": "passed",
+          "durationMs": 321,
+          "error": null,
+          "screenshot": null,
+          "parallel": null,
+          "repeat": [
+            {
+              "block": 0,
+              "iteration": 3,
+              "of": 3
+            }
+          ],
+          "startedAt": "2026-09-24T03:04:05.506Z",
+          "finishedAt": "2026-09-24T03:04:05.827Z"
+        },
+        {
+          "index": 12,
+          "phase": "test",
+          "fixture": null,
+          "on": "server",
+          "action": "wait_for_log",
+          "label": "Alice issued server command: /st :thinking-face:",
+          "status": "passed",
+          "durationMs": 413,
+          "error": null,
+          "screenshot": null,
+          "parallel": null,
+          "repeat": [
+            {
+              "block": 0,
+              "iteration": 3,
+              "of": 3
+            }
+          ],
+          "startedAt": "2026-09-24T03:04:05.827Z",
+          "finishedAt": "2026-09-24T03:04:06.240Z"
+        },
+        {
+          "index": 13,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "screenshot",
+          "label": "stamp-3",
+          "status": "passed",
+          "durationMs": 1889,
+          "error": null,
+          "screenshot": "tests/stamp-burst/screenshots/Alice/stamp-3.png",
+          "parallel": {
+            "block": 2,
+            "lane": 0
+          },
+          "repeat": [
+            {
+              "block": 0,
+              "iteration": 3,
+              "of": 3
+            }
+          ],
+          "startedAt": "2026-09-24T03:04:06.240Z",
+          "finishedAt": "2026-09-24T03:04:08.129Z"
+        },
+        {
+          "index": 14,
+          "phase": "test",
+          "fixture": null,
+          "on": "Bob",
+          "action": "screenshot",
+          "label": "stamp-3",
+          "status": "passed",
+          "durationMs": 1859,
+          "error": null,
+          "screenshot": "tests/stamp-burst/screenshots/Bob/stamp-3.png",
+          "parallel": {
+            "block": 2,
+            "lane": 1
+          },
+          "repeat": [
+            {
+              "block": 0,
+              "iteration": 3,
+              "of": 3
+            }
+          ],
+          "startedAt": "2026-09-24T03:04:06.244Z",
+          "finishedAt": "2026-09-24T03:04:08.103Z"
+        },
+        {
+          "index": 15,
+          "phase": "test",
+          "fixture": null,
+          "on": null,
+          "action": "wait",
+          "label": "6s",
+          "status": "passed",
+          "durationMs": 6003,
+          "error": null,
+          "screenshot": null,
+          "parallel": null,
+          "repeat": [
+            {
+              "block": 0,
+              "iteration": 3,
+              "of": 3
+            }
+          ],
+          "startedAt": "2026-09-24T03:04:08.129Z",
+          "finishedAt": "2026-09-24T03:04:14.132Z"
+        },
+        {
+          "index": 16,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "press_key",
+          "label": "F5",
+          "status": "passed",
+          "durationMs": 61,
+          "error": null,
+          "screenshot": null,
+          "parallel": {
+            "block": 3,
+            "lane": 0
+          },
+          "repeat": [
+            {
+              "block": 1,
+              "iteration": 1,
+              "of": 2
+            }
+          ],
+          "startedAt": "2026-09-24T03:04:14.132Z",
+          "finishedAt": "2026-09-24T03:04:14.193Z"
+        },
+        {
+          "index": 17,
+          "phase": "test",
+          "fixture": null,
+          "on": "Alice",
+          "action": "press_key",
+          "label": "F5",
+          "status": "passed",
+          "durationMs": 58,
+          "error": null,
+          "screenshot": null,
+          "parallel": {
+            "block": 3,
+            "lane": 0
+          },
+          "repeat": [
+            {
+              "block": 1,
+              "iteration": 2,
+              "of": 2
+            }
+          ],
+          "startedAt": "2026-09-24T03:04:14.195Z",
+          "finishedAt": "2026-09-24T03:04:14.253Z"
+        },
+        {
+          "index": 18,
+          "phase": "test",
+          "fixture": null,
+          "on": "Bob",
+          "action": "screenshot",
+          "label": "final",
+          "status": "passed",
+          "durationMs": 1880,
+          "error": null,
+          "screenshot": "tests/stamp-burst/screenshots/Bob/final.png",
+          "parallel": {
+            "block": 3,
+            "lane": 1
+          },
+          "repeat": null,
+          "startedAt": "2026-09-24T03:04:14.135Z",
+          "finishedAt": "2026-09-24T03:04:16.015Z"
+        },
+        {
+          "index": 19,
+          "phase": "test",
+          "fixture": null,
+          "on": "server",
+          "action": "assert_no_log",
+          "label": "Exception",
+          "status": "passed",
+          "durationMs": 4,
+          "error": null,
+          "screenshot": null,
+          "parallel": null,
+          "repeat": null,
+          "startedAt": "2026-09-24T03:04:16.015Z",
+          "finishedAt": "2026-09-24T03:04:16.019Z"
+        }
+      ],
+      "failure": null,
+      "screenshots": [
+        {
+          "player": "Alice",
+          "name": "stamp-1",
+          "path": "tests/stamp-burst/screenshots/Alice/stamp-1.png",
+          "width": 32,
+          "height": 18,
+          "stepIndex": 3
+        },
+        {
+          "player": "Bob",
+          "name": "stamp-1",
+          "path": "tests/stamp-burst/screenshots/Bob/stamp-1.png",
+          "width": 32,
+          "height": 18,
+          "stepIndex": 4
+        },
+        {
+          "player": "Alice",
+          "name": "stamp-2",
+          "path": "tests/stamp-burst/screenshots/Alice/stamp-2.png",
+          "width": 32,
+          "height": 18,
+          "stepIndex": 8
+        },
+        {
+          "player": "Bob",
+          "name": "stamp-2",
+          "path": "tests/stamp-burst/screenshots/Bob/stamp-2.png",
+          "width": 32,
+          "height": 18,
+          "stepIndex": 9
+        },
+        {
+          "player": "Alice",
+          "name": "stamp-3",
+          "path": "tests/stamp-burst/screenshots/Alice/stamp-3.png",
+          "width": 32,
+          "height": 18,
+          "stepIndex": 13
+        },
+        {
+          "player": "Bob",
+          "name": "stamp-3",
+          "path": "tests/stamp-burst/screenshots/Bob/stamp-3.png",
+          "width": 32,
+          "height": 18,
+          "stepIndex": 14
+        },
+        {
+          "player": "Bob",
+          "name": "final",
+          "path": "tests/stamp-burst/screenshots/Bob/final.png",
+          "width": 32,
+          "height": 18,
+          "stepIndex": 18
+        }
+      ],
+      "logRanges": {
+        "logs/sessions/0/server.log": {
+          "from": 44,
+          "to": 58
+        },
+        "logs/sessions/0/clients/Alice.log": {
+          "from": 12,
+          "to": 18
+        },
+        "logs/sessions/0/clients/Bob.log": {
+          "from": 12,
+          "to": 19
+        }
+      },
+      "startedAt": "2026-09-24T03:03:45Z",
+      "durationMs": 31019
+    },
+    {
       "id": "stamp-legacy-format",
       "name": "stamp-legacy-format",
-      "order": 2,
+      "order": 3,
       "source": "file:game-test/scenarios/stamp-legacy-format.json",
       "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
       "tags": [

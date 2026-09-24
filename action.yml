@@ -65,9 +65,13 @@ inputs:
     required: false
     default: ""
   server-build:
-    description: Paper build number. Defaults to the latest stable build for the version.
+    description: Paper build number. Defaults to the newest build accepted by paper-channel. An explicit build is used even when its channel is less stable (with a warning).
     required: false
     default: ""
+  paper-channel:
+    description: 'Least stable Paper build channel to accept: "stable" (only stable builds), "beta" (beta or stable) or "alpha" (any build). The newest accepted build is used, and the run fails when the version has none.'
+    required: false
+    default: stable
   java-version:
     description: 'Java major version for the server, or "auto" to pick max(the version Mojang requires, the version the plugins are compiled for).'
     required: false
@@ -203,11 +207,14 @@ runs:
       if: inputs.skip-system-deps != 'true'
       shell: bash
       run: |
-        # GPU の無いランナーで Mesa のソフトウェアレンダリングを使うための描画・音声ライブラリも入れる
+        # GPU の無いランナーで Mesa のソフトウェアレンダリングを使うための描画・音声ライブラリも入れる。
+        # 26.3 以降のクライアント（renderpearl）は Xvfb で OpenGL のウィンドウを作れないことがあるため、
+        # ソフトウェア実装の Vulkan（lavapipe）も入れて Vulkan バックエンドで描画できるようにする
         sudo apt-get update
         sudo apt-get install --no-install-recommends -y \
           xvfb xdotool \
           libgl1 libgl1-mesa-dri libglx-mesa0 libegl1 libopenal1 \
+          libvulkan1 mesa-vulkan-drivers \
           libxrandr2 libxinerama1 libxcursor1 libxi6
 
     - name: Determine the Java version for the server
@@ -272,6 +279,7 @@ runs:
         SERVER_PROPERTIES: ${{ inputs.server-properties }}
         SERVER_FILES: ${{ inputs.server-files }}
         SERVER_BUILD: ${{ inputs.server-build }}
+        PAPER_CHANNEL: ${{ inputs.paper-channel }}
         WORK_DIR: ${{ steps.prepare.outputs.work-dir }}
         OUT_DIR: ${{ steps.prepare.outputs.out-dir }}
       run: |
@@ -286,6 +294,7 @@ runs:
           --java "$JAVA_HOME/bin/java"
           --work-dir "$WORK_DIR"
           --out-dir "$OUT_DIR"
+          --paper-channel "$PAPER_CHANNEL"
         )
         if [ -n "$SUITE" ]; then
           args+=(--suite "$SUITE")

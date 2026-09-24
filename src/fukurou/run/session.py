@@ -14,6 +14,7 @@ from fukurou.result.recorder import RunRecorder
 from fukurou.run.artifacts import ArtifactCollector, session_client_log, session_server_log
 from fukurou.run.isolation import PLAYER_MISSING, reset_commands
 from fukurou.runner.client import ClientDiedError
+from fukurou.runner.client_startup import startup_failure
 from fukurou.runner.log_window import LogWindow
 from fukurou.runner.player_session import PlayerSession
 from fukurou.runner.process import GameProcessError, tail_log
@@ -29,6 +30,10 @@ CLIENT_JOIN_TIMEOUT = 900.0
 # 起動完了の時点で有効化は終わっているはずなので短くてよい
 PLUGIN_CHECK_TIMEOUT = 15.0
 JOIN_POLL_SECONDS = 1.0
+# dirty の理由の定型。passed で終わらなかったテストで入力を受けた（画面が開いたままかもしれない）
+DIRTY_INPUT_REASON = "the previous test left keys pressed or a screen open"
+# 期限切れの猶予を過ぎてもレーンが操作し続けていた（置き去りにした）
+DIRTY_STRANDED_REASON = "a lane of the previous test was still driving the client after its timeout"
 
 
 class GameSession:
@@ -102,6 +107,9 @@ class GameSession:
         # 同じセッションでの再参加でも前回の "joined the game" に一致しないよう、起動前の位置から見る
         probe = LogWindow(self.server.log_path)
         probe.mark()
+        # クライアント自身のログ。描画バックエンドを作れず止まった等を早めに見つける（起動で latest.log は作り直される）
+        client_log = LogWindow(player.latest_log)
+        client_log.mark()
         logger.info("%s: starting the client", name)
         player.start(self.server.port)
         self.launches[name] = self.launches.get(name, 0) + 1
@@ -115,6 +123,9 @@ class GameSession:
             except ClientDiedError:
                 logger.error("%s client output (last lines):\n%s", name, tail_log(player.launch_log))
                 raise
+            failure = startup_failure(client_log.read())
+            if failure:
+                raise GameProcessError(f"{name}'s client cannot start: {failure}")
             self.server.check_alive()
             self.sleep(JOIN_POLL_SECONDS)
         logger.info("%s joined", name)
@@ -224,10 +235,10 @@ class GameSession:
                 ranges[path] = line_range
         return ranges
 
-    def mark_dirty(self, names: set[str]) -> None:
-        """passed で終わらなかったテストで入力を受けたプレイヤー。画面が開いたままかもしれない。"""
+    def mark_dirty(self, names: set[str], reason: str = DIRTY_INPUT_REASON) -> None:
+        """次に使う前に起動し直すプレイヤー。既定は passed で終わらなかったテストで入力を受けた（画面が開いたままかもしれない）。"""
         for name in names:
-            self.dirty.setdefault(name, "the previous test left keys pressed or a screen open")
+            self.dirty.setdefault(name, reason)
 
     def server_alive(self) -> bool:
         return self.server is not None and self.server.is_running()

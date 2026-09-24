@@ -77,9 +77,9 @@ class BuildSiteTest(unittest.TestCase):
         self.assertEqual([r["id"] for r in manifest["runs"]], ["paper-1.21.9", "paper-1.21.10", "paper-1.21.11"])
         self.assertEqual([r["status"] for r in manifest["runs"]], ["error", "passed", "failed"])
         self.assertEqual(manifest["summary"]["runs"], {"total": 3, "passed": 1, "failed": 1, "error": 1})
-        # 1.21.10 の 3 件 + 1.21.11 の 4 件。result.json の無い 1.21.9 は数えない
+        # 1.21.10 の 4 件 + 1.21.11 の 4 件。result.json の無い 1.21.9 は数えない
         self.assertEqual(
-            manifest["summary"]["tests"], {"total": 7, "passed": 4, "failed": 1, "error": 1, "skipped": 1}
+            manifest["summary"]["tests"], {"total": 8, "passed": 5, "failed": 1, "error": 1, "skipped": 1}
         )
         self.assertEqual(manifest["players"], ["Alice", "Bob"])
         self.assertNotIn("shots", manifest)
@@ -89,6 +89,9 @@ class BuildSiteTest(unittest.TestCase):
         self.assertRegex(manifest["generator"]["version"], r"^\d+\.\d+\.\d+")
         self.assertNotEqual(manifest["generator"]["version"], build_manifest.FALLBACK_VERSION)
         self.assertEqual(manifest["runs"][1]["base"], "runs/paper-1.21.10/")
+        # result.json はそのまま載るので、ビューアは minecraft.channel から alpha / beta のバッジを出せる
+        self.assertEqual(manifest["runs"][1]["result"]["minecraft"]["channel"], "STABLE")
+        self.assertEqual(manifest["runs"][2]["result"]["minecraft"]["channel"], "ALPHA")
         self.assertTrue((self.out / "runs/paper-1.21.10/tests/stamp-thinking-face/screenshots/Bob/after-stamp.png").is_file())
         self.assertTrue((self.out / "runs/paper-1.21.11/result.json").is_file())
         self.assertTrue((self.out / "runs/paper-1.21.10/logs/sessions/1/server.log").is_file())
@@ -104,7 +107,7 @@ class BuildSiteTest(unittest.TestCase):
         # 最初に現れた run（古いバージョン）の実行順で並び、後の run にだけあるテストは末尾に足す
         self.assertEqual(
             [t["id"] for t in manifest["tests"]],
-            ["stamp-thinking-face", "stamp-sleeping-face", "stamp-legacy-format", "stamp-reload"],
+            ["stamp-thinking-face", "stamp-sleeping-face", "stamp-burst", "stamp-legacy-format", "stamp-reload"],
         )
         self.assertEqual(tests["stamp-thinking-face"]["cells"], {"paper-1.21.10": "passed", "paper-1.21.11": "passed"})
         self.assertEqual(tests["stamp-sleeping-face"]["status"], "failed")
@@ -119,6 +122,20 @@ class BuildSiteTest(unittest.TestCase):
         self.assertEqual(tests["stamp-legacy-format"]["shots"], ["legacy-stamp"])
         self.assertEqual(tests["stamp-legacy-format"]["tags"], ["stamps", "legacy"])
         self.assertEqual(tests["stamp-reload"]["shots"], [])
+
+    def test_parallel_and_repeat_fields_pass_through(self):
+        # fukurou 2.1 のステップの parallel / repeat / startedAt / finishedAt は手を加えずにビューアへ渡す
+        manifest = self.build()
+        tests = {t["id"]: t for t in manifest["tests"]}
+        self.assertEqual(tests["stamp-burst"]["shots"], ["stamp-1", "stamp-2", "stamp-3", "final"])
+        run = next(r for r in manifest["runs"] if r["id"] == "paper-1.21.10")
+        burst = next(t for t in run["result"]["tests"] if t["id"] == "stamp-burst")
+        bob = burst["steps"][4]
+        self.assertEqual(bob["parallel"], {"block": 0, "lane": 1})
+        self.assertEqual(bob["repeat"], [{"block": 0, "iteration": 1, "of": 3}])
+        self.assertTrue(bob["startedAt"] < bob["finishedAt"])
+        self.assertEqual(bob["screenshot"], "tests/stamp-burst/screenshots/Bob/stamp-1.png")
+        self.assertTrue((self.out / "runs/paper-1.21.10/tests/stamp-burst/screenshots/Bob/final.png").is_file())
 
     def test_row_status_priority(self):
         # 同じテストが版によって skipped / passed / error なら、行は error
@@ -156,7 +173,7 @@ class BuildSiteTest(unittest.TestCase):
         self.assertIn("fukurou-paper-1.21.8: unsupported result schemaVersion 1", manifest["warnings"])
         self.assertTrue(all("paper-1.21.8" not in t["cells"] for t in manifest["tests"]))
         self.assertEqual(manifest["summary"]["runs"]["error"], 2)
-        self.assertEqual(manifest["summary"]["tests"]["total"], 7)
+        self.assertEqual(manifest["summary"]["tests"]["total"], 8)
 
     def test_invalid_json_and_missing_id(self):
         (self.artifacts / "fukurou-paper-26.1").mkdir()
@@ -180,7 +197,7 @@ class BuildSiteTest(unittest.TestCase):
         self.artifacts = flat
         manifest = self.build()
         self.assertEqual(manifest["summary"]["runs"], {"total": 1, "passed": 1, "failed": 0, "error": 0})
-        self.assertEqual(manifest["summary"]["tests"]["total"], 3)
+        self.assertEqual(manifest["summary"]["tests"]["total"], 4)
         run = manifest["runs"][0]
         self.assertEqual((run["id"], run["artifact"]), ("paper-1.21.10", "fukurou-paper-1.21.10"))
         self.assertIsNotNone(run["result"])
@@ -213,7 +230,7 @@ class BuildSiteTest(unittest.TestCase):
         first = run["result"]["tests"][0]
         self.assertEqual((run["result"]["sessions"], first["screenshots"], first["steps"]), ([], [], []))
         self.assertIsNone(first["logRanges"])
-        self.assertEqual(len(run["result"]["tests"]), 3)
+        self.assertEqual(len(run["result"]["tests"]), 4)
         self.assertEqual(len([w for w in manifest["warnings"] if "is not a list" in w]), 3)
         self.assertTrue(any("not objects" in w for w in manifest["warnings"]))
 
@@ -223,6 +240,7 @@ class BuildSiteTest(unittest.TestCase):
         result["minecraft"]["version"] = "1.21.8"
         result["tests"][1]["id"] = "../escape"
         result["tests"][2]["id"] = "stamp-thinking-face"
+        del result["tests"][3]
         self.write_result("fukurou-paper-1.21.8", result)
         manifest = self.build()
         run = manifest["runs"][0]
@@ -297,7 +315,7 @@ class BuildSiteTest(unittest.TestCase):
         outputs = output_file.read_text()
         self.assertIn("status=failed\n", outputs)
         self.assertIn('summary={"total":3,"passed":1,"failed":1,"error":1}\n', outputs)
-        self.assertIn('tests-summary={"total":7,"passed":4,"failed":1,"error":1,"skipped":1}\n', outputs)
+        self.assertIn('tests-summary={"total":8,"passed":5,"failed":1,"error":1,"skipped":1}\n', outputs)
         self.assertIn("failed-tests=stamp-sleeping-face@1.21.11,stamp-reload@1.21.11\n", outputs)
 
     def test_run_failure_in_step_summary(self):
