@@ -26,7 +26,7 @@ Defined by the pydantic model `fukurou.result.model.ResultV1`. The generated JSO
   "schemaVersion": 1,
   "id": "paper-1.21.11",
   "status": "passed",
-  "fukurou": { "version": "0.1.0", "portablemc": "5.0.4" },
+  "fukurou": { "version": "1.0.0", "portablemc": "5.0.4" },
   "minecraft": { "version": "1.21.11", "server": "paper", "build": 130, "channel": "STABLE" },
   "java": { "server": 25 },
   "scenario": { "name": "greeting", "source": "file:scenarios/greeting.json", "sha256": "..." },
@@ -75,7 +75,7 @@ runs/<id>/crash-reports/...          # only when include-logs is true
 ```json
 {
   "schemaVersion": 1,
-  "generator": { "name": "fukurou-ui", "version": "0.1.0" },
+  "generator": { "name": "fukurou-ui", "version": "1.0.0" },
   "generatedAt": "2026-09-24T03:10:00Z",
   "title": "ExamplePlugin abc1234",
   "ci": { "repository": "example/plugin", "sha": "...", "runId": "123", "runUrl": "https://github.com/example/plugin/actions/runs/123" },

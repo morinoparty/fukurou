@@ -95,7 +95,7 @@ The bundle is about 534 kB (154 kB gzip), of which about 112 kB is CSS. Most of 
 [`panda.config.ts`](panda.config.ts) uses the presets `@pandacss/preset-base` and Chlorophyll's `createPreset({ brandColor: "mori", grayColor: stone, radius: "md" })`, with the class and variable prefix `fk`. `panda codegen --clean` writes the generated `styled-system/` (git-ignored; every script regenerates it), and the PostCSS plugin in [`postcss.config.cjs`](postcss.config.cjs) fills the `@layer` declaration in `src/index.css` with only the styles found in `src/` and in the Chlorophyll components the viewer uses.
 
 - The palette is `mori`: `colorPalette: "mori"` is set on `html` (so portalled tooltips get it too) and on the app root. Colors come from semantic tokens (`bg`, `bg.panel`, `fg`, `fg.muted`, `border`, `bg.error` / `fg.error`, `colorPalette.*`), never raw values.
-- Light and dark follow the OS. Chlorophyll 0.4.8's semantic colors are light-only, so the config maps each palette's 12-step scale (`gray.1` … `gray.12`, `a1` … `a12`) to the dark reference ramp under `_osDark`; everything built on those steps follows. A few tokens that point at white or a fixed ramp (`bg.panel`, `bg.inverted`, `fg.inverted`, `overlay`) get explicit dark values.
+- The viewer is light only, like Chlorophyll itself (`color-scheme: light`), even when the OS uses a dark theme.
 - Chlorophyll marks every recipe `staticCss: ["*"]`, so a `config:resolved` hook drops the recipes the viewer does not use (and the unused `umi` palette) to keep the CSS small.
 - Components come from [`src/chlorophyll.ts`](src/chlorophyll.ts), which imports each one from its own directory through the `chlorophyll-components/*` alias (Vite and `tsconfig.json`). The package's public entry points are barrels that also pull in three.js / skinview3d / react-three-fiber, and the package ships TypeScript sources, so the barrel would also type-check components we do not use under this project's stricter compiler options. Add new components to that file and their directory to `include` in `panda.config.ts`.
 - Panda classes are atomic: to override a shared style, merge style objects with `css(baseStyle, { ... })` (see `src/styles.ts`) instead of joining class names with `cx`.
@@ -116,7 +116,7 @@ src/components/        shared UI (badges, lightbox, thumbnails) and per-page par
 src/pages/             the four routes
 src/router.tsx         route tree and hash history
 build-plugins/         the Vite plugin that turns the module script into a classic one
-panda.config.ts        Panda CSS config (Chlorophyll preset, dark mode, trimmed recipes)
+panda.config.ts        Panda CSS config (Chlorophyll preset, trimmed recipes)
 dev/                   sample manifest and images for `pnpm dev`
 ```
 

@@ -1,6 +1,6 @@
 [project]
 name = "fukurou"
-version = "0.1.0"
+version = "1.0.0"
 description = "In-game test runner for Minecraft plugins: drive real clients from JSON scenarios"
 readme = "README.md"
 license = "MIT"
