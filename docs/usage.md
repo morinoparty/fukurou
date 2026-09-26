@@ -1,10 +1,11 @@
 # Usage
 
-fukurou has three GitHub Actions. They live in one repository and are released together, so use the same tag (for example `@v2`) for all of them.
+fukurou has four GitHub Actions. They live in one repository and are released together, so use the same tag (for example `@v2`) for all of them.
 
 - [`morinoparty/fukurou/versions`](#morinoparty-fukurou-versions): resolve a version spec to a matrix.
 - [`morinoparty/fukurou`](#morinoparty-fukurou): run a suite of tests against one version, in one server session.
 - [`morinoparty/fukurou/ui`](#morinoparty-fukurou-ui): build and publish the viewer site.
+- [`morinoparty/fukurou/setup`](../setup/action.yml): install the system packages and restore the cache for the Kotlin / JUnit library. See [Kotlin / JUnit (JVM)](../README.md#kotlin--junit-jvm) in the README.
 
 See [contract.md](contract.md) for the exact shape of `result.json` and `manifest.json`.
 
