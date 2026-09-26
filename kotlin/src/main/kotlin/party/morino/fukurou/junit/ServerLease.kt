@@ -151,8 +151,12 @@ internal class ServerLease private constructor(
     @Synchronized
     fun testId(testClass: Class<*>, method: Method, uniqueId: String): String {
         val identity = identityOf(testClass, method)
-        val id = TestIdentity.invocationId(identity.id, TestIdentity.invocation(uniqueId))
+        val invocation = TestIdentity.invocation(uniqueId)
+        val id = TestIdentity.invocationId(identity.id, invocation)
         if (id !in plannedIds) addPlanned(identity, id)
+        // テンプレートは "<id>-<n>" として記録するので、計画に載せたコンテナの stub（not run）を取り消す。
+        // id は plannedIds に残し、他のテストが同じ id を使わないようにする
+        if (invocation != null) server.recorder.unplan(identity.id)
         return id
     }
 

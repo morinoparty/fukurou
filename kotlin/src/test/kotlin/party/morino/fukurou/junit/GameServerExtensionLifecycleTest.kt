@@ -25,6 +25,7 @@ import party.morino.fukurou.FukurouConfig
 import party.morino.fukurou.MissingHostPolicy
 import party.morino.fukurou.engine.net.MojangApi
 import party.morino.fukurou.engine.process.HostCheck
+import party.morino.fukurou.junit.fixture.FakeArenaTemplateTests
 import party.morino.fukurou.junit.fixture.FakeArenaTests
 import party.morino.fukurou.junit.fixture.TwinArenaTests
 import party.morino.fukurou.junit.fixture.platform.FakeEnvironment
@@ -103,6 +104,22 @@ class GameServerExtensionLifecycleTest {
         assertTrue(FakeEnvironment.commands.containsAll(listOf("setup", "say hi", "fail now")))
         // 実行の終わりに、リースが使った Fukurou も閉じる
         assertTrue(FakeEnvironment.fukurou.isClosed)
+    }
+
+    @Test
+    @DisplayName("records template invocations without a not-run stub and drops aborted tests from their session")
+    fun templatesAndAborts() {
+        val summary = execute(selectClass(FakeArenaTemplateTests::class.java))
+        assertEquals(2, summary.testsSucceededCount, summary.failures.joinToString { it.exception.toString() })
+        val result = onlyResult()
+        val tests = result["tests"]!!.jsonArray.map { it.jsonObject }.associateBy { it.string("id") }
+        // コンテナの id（repeated）は計画から取り消され、実行した回だけが残る
+        assertEquals(setOf("repeated-1", "repeated-2", "is-aborted-by-an-assumption"), tests.keys)
+        val aborted = tests.getValue("is-aborted-by-an-assumption")
+        assertEquals("skipped", aborted.string("status"))
+        // 始めた後に skipped になったテストはセッションの一覧に載せない（contract.md §2）
+        val sessionTests = result["sessions"]!!.jsonArray.single().jsonObject["tests"]!!.jsonArray.map { (it as JsonPrimitive).content }
+        assertEquals(listOf("repeated-1", "repeated-2"), sessionTests)
     }
 
     @Test

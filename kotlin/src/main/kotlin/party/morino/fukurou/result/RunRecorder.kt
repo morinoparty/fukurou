@@ -120,6 +120,20 @@ internal class RunRecorder(
         planLocked(test)
     }
 
+    /**
+     * まだ走っていない（not run の）計画を取り消す。テンプレート（@ParameterizedTest など）のコンテナは
+     * 実行時に "<id>-<n>" として記録されるので、元の id の stub を残すと「走らなかったテスト」に見えてしまう。
+     *
+     * @return 取り消したなら true
+     */
+    @Synchronized
+    fun unplan(testId: String): Boolean {
+        val test = tests[testId] ?: return false
+        if (!test.isNotRun) return false
+        tests.remove(testId)
+        return true
+    }
+
     /** セッションの開始。index は追加順と一致させる。 */
     @Synchronized
     override fun sessionStarted(index: Int, kind: SessionKind) {
@@ -193,6 +207,7 @@ internal class RunRecorder(
     @Synchronized
     override fun testFinished(testId: String, outcome: TestOutcome, logRanges: Map<String, LogRange>) {
         test(testId)?.finish(outcome, logRanges)
+        dropIfSkipped(testId)
         writeQuietly("test $testId")
     }
 
@@ -200,6 +215,7 @@ internal class RunRecorder(
     @Synchronized
     override fun testSkipped(testId: String, reason: String) {
         test(testId)?.skip(reason)
+        dropIfSkipped(testId)
         writeQuietly("skipped test $testId")
     }
 
@@ -290,6 +306,15 @@ internal class RunRecorder(
         if (test.id in tests) return
         tests[test.id] = TestRecorder(test, warn, clock, nanoTime)
         test.players.forEach { addPlayer(it.name) }
+    }
+
+    /**
+     * 始めた後に skipped で閉じたテストを sessions[].tests から外す（suite_run.py:386 _abandon_test、contract.md §2）。
+     * skip が警告だけで何もしなかった（既に閉じていた）場合もあるので、仮定せず status で確かめる。
+     */
+    private fun dropIfSkipped(testId: String) {
+        if (tests[testId]?.status != TestStatus.SKIPPED) return
+        sessions.replaceAll { session -> if (testId in session.tests) session.copy(tests = session.tests - testId) else session }
     }
 
     /** players[] に無ければ足す。 */
