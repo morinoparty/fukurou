@@ -8,6 +8,7 @@ import net.kyori.adventure.text.Component
 import net.kyori.adventure.title.Title
 import net.kyori.adventure.title.TitlePart
 import party.morino.fukurou.engine.paper.command.ComponentCodec
+import party.morino.fukurou.engine.paper.command.ErrorResponse
 import party.morino.fukurou.spi.capability.AudienceCommands
 import party.morino.fukurou.spi.model.CommandCall
 import java.math.BigDecimal
@@ -86,7 +87,7 @@ internal class PaperAudienceCommands(private val codec: ComponentCodec) : Audien
             else -> {
                 // players は対象を 1 つしか取らないので、見る人にタグを付けてセレクターでまとめて指定する
                 val tag = viewerTag(id)
-                listOf(CommandCall("tag @a remove $tag", ignore = listOf(TAG_NOT_PRESENT))) +
+                listOf(CommandCall("tag @a remove $tag", ignore = TAG_IGNORE)) +
                     players.map { CommandCall("tag $it add $tag", player = it) } +
                     CommandCall("$bossbar @a[tag=$tag]")
             }
@@ -97,7 +98,7 @@ internal class PaperAudienceCommands(private val codec: ComponentCodec) : Audien
         listOf(
             CommandCall("bossbar remove ${id.asString()}"),
             // 複数人で見ていたときに付けたタグを残さない
-            CommandCall("tag @a remove ${viewerTag(id)}", ignore = listOf(TAG_NOT_PRESENT)),
+            CommandCall("tag @a remove ${viewerTag(id)}", ignore = TAG_IGNORE),
         )
 
     /** 名前（任意）・色・形・値の bossbar set。 */
@@ -131,7 +132,7 @@ internal class PaperAudienceCommands(private val codec: ComponentCodec) : Audien
         /** 1 tick のミリ秒。 */
         private const val MILLIS_PER_TICK = 50L
 
-        /** タグを持つエンティティが居ないときの応答の断片。失敗ではない。 */
-        private const val TAG_NOT_PRESENT = "No entity was found"
+        /** 誰もタグを持たない・誰も参加していないときの応答。どちらも失敗ではない。 */
+        private val TAG_IGNORE = listOf("No entity was found", ErrorResponse.PLAYER_MISSING)
     }
 }
