@@ -44,6 +44,8 @@ class ContractModel(BaseModel):
 class FukurouInfo(ContractModel):
     version: str
     portablemc: str
+    # 結果を書いたランナー。JVM 版（fukurou-kotlin）は "kotlin"。Python 版は書かない（None）
+    runner: str | None = None
 
 
 class MinecraftInfo(ContractModel):
@@ -310,8 +312,11 @@ class ResultV2(ContractModel):
     """result.json のルート。"""
 
     schema_version: Literal[2] = Field(default=SCHEMA_VERSION, alias="schemaVersion")
-    # "<server>-<minecraft version>"（例: paper-1.21.11）。artifact 名の末尾と一致させる
+    # "<server>-<minecraft version>[-<label>]"（例: paper-1.21.11）。artifact 名の末尾と一致させる
     id: str
+    # 1 つのジョブが同じバージョンで複数の result を書くとき（fukurou-kotlin）のサーバーのラベル。
+    # そのとき id は <server>-<version>-<label> になる。Python 版は書かない（None）
+    label: str | None = None
     status: RunStatus
     fukurou: FukurouInfo
     minecraft: MinecraftInfo

@@ -1,10 +1,11 @@
 # Usage
 
-fukurou has three GitHub Actions. They live in one repository and are released together, so use the same tag (for example `@v2`) for all of them.
+fukurou has four GitHub Actions. They live in one repository and are released together, so use the same tag (for example `@v2`) for all of them.
 
 - [`morinoparty/fukurou/versions`](#morinoparty-fukurou-versions): resolve a version spec to a matrix.
 - [`morinoparty/fukurou`](#morinoparty-fukurou): run a suite of tests against one version, in one server session.
 - [`morinoparty/fukurou/ui`](#morinoparty-fukurou-ui): build and publish the viewer site.
+- [`morinoparty/fukurou/setup`](../setup/action.yml): install the system packages and restore the cache for the Kotlin / JUnit library. See [Kotlin / JUnit (JVM)](../README.md#kotlin--junit-jvm) in the README.
 
 See [contract.md](contract.md) for the exact shape of `result.json` and `manifest.json`.
 
@@ -346,7 +347,7 @@ deploy:
 | `status` | `passed` when every run passed, `failed` when any run failed or errored, `empty` when no runs were found. |
 | `summary` | Run counts as JSON, for example `{"total":7,"passed":6,"failed":1,"error":0}`. |
 | `tests-summary` | Test counts across every run (test x version) as JSON, for example `{"total":18,"passed":14,"failed":2,"error":0,"skipped":2}`. A "not run" cell (a test absent from a run, for example because a filter excluded it there) is not counted. |
-| `failed-tests` | `<test id>@<minecraft version>` of every cell whose status is `failed` or `error`, comma separated. |
+| `failed-tests` | `<test id>@<minecraft version>` (or `<test id>@<minecraft version>/<label>` for a labelled fukurou-kotlin run) of every cell whose status is `failed` or `error`, comma separated. |
 | `site-dir` | Local directory that holds the site. |
 
 ## Command line
