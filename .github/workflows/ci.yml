@@ -167,7 +167,7 @@ jobs:
           PY
 
   kotlin-e2e:
-    # 本物の Paper と Minecraft クライアントで Kotlin 版の e2eTest（SmokeTest）を実行する（§8.4）
+    # 本物の Paper と Minecraft クライアントで Kotlin 版の e2eTest（SmokeTest と、2 台同時の MultiServerTest）を実行する（§8.4）
     name: Kotlin e2e (Minecraft ${{ fromJSON(needs.versions.outputs.smoke)[0] }})
     needs: versions
     runs-on: ubuntu-24.04
@@ -206,19 +206,34 @@ jobs:
             -Pfukurou.missingHost=fail
 
       - name: Check result.json
-        # SmokeTest の 2 件がすべて passed で記録されていること（result.json は JVM の終了時に書かれる）
+        # SmokeTest（smoke、2 件）と MultiServerTest（lobby と duel、各 1 件）の result.json が揃い、
+        # すべて passed で記録されていること（result.json は JVM の終了時に書かれる）
         run: |
           python3 - "$RUNNER_TEMP/kotlin-out" <<'PY'
           import json, pathlib, sys
+          # label → 期待するテストの件数
+          expected = {"smoke": 2, "lobby": 1, "duel": 1}
           results = sorted(pathlib.Path(sys.argv[1]).glob("*/result.json"))
-          assert len(results) == 1, results
-          result = json.loads(results[0].read_text())
-          print(results[0], result["status"], result["summary"])
-          assert result["fukurou"]["runner"] == "kotlin", result["fukurou"]
-          assert result["status"] == "passed", result["status"]
-          assert result["summary"]["total"] == 2, result["summary"]
-          assert result["summary"]["passed"] == 2, result["summary"]
-          assert all(test["status"] == "passed" for test in result["tests"]), [t["status"] for t in result["tests"]]
+          assert len(results) == len(expected), results
+          seen = {}
+          for path in results:
+              result = json.loads(path.read_text())
+              print(path, result["label"], result["status"], result["summary"])
+              label = result["label"]
+              assert label in expected and label not in seen, (label, sorted(seen))
+              seen[label] = result["id"]
+              total = expected[label]
+              assert result["id"].endswith("-" + label), result["id"]
+              assert path.parent.name == result["id"], (path, result["id"])
+              assert result["fukurou"]["runner"] == "kotlin", result["fukurou"]
+              assert result["status"] == "passed", (label, result["status"], result.get("failure"))
+              assert result["summary"]["total"] == total, (label, result["summary"])
+              assert result["summary"]["passed"] == total, (label, result["summary"])
+              assert len(result["tests"]) == total, (label, [t["id"] for t in result["tests"]])
+              assert all(test["status"] == "passed" for test in result["tests"]), (label, [t["status"] for t in result["tests"]])
+          # 3 つの result はそれぞれ別の run（id が重ならない）
+          assert set(seen) == set(expected), seen
+          assert len(set(seen.values())) == len(expected), seen
           PY
 
       - name: Upload the Kotlin e2e output
