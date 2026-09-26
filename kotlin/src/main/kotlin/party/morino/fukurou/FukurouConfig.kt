@@ -70,17 +70,18 @@ public data class FukurouConfig(
 
             return FukurouConfig(
                 acceptEula = parseBoolean("fukurou.acceptEula", layered("fukurou.acceptEula", "FUKUROU_ACCEPT_EULA")) ?: false,
-                workDir = Path.of(layered("fukurou.workDir", "FUKUROU_WORK_DIR") ?: ".fukurou-work"),
-                outDir = Path.of(layered("fukurou.outDir", "FUKUROU_OUT_DIR") ?: "fukurou-out"),
+                // 子プロセスは別の cwd で動くため、argv に入るパスはすべてここで絶対パスにする（suite_run.py:172 の resolve 相当）
+                workDir = absolute(layered("fukurou.workDir", "FUKUROU_WORK_DIR") ?: ".fukurou-work"),
+                outDir = absolute(layered("fukurou.outDir", "FUKUROU_OUT_DIR") ?: "fukurou-out"),
                 // 指定が無ければテストを動かしている JVM と同じ java でサーバーを起動する
-                serverJava = Path.of(prop("fukurou.serverJava") ?: currentJava()),
+                serverJava = executable(prop("fukurou.serverJava") ?: currentJava()),
                 memoryBudgetMb = prop("fukurou.memoryBudgetMb")?.let { value ->
                     value.toLongOrNull()?.takeIf { it > 0 }
                         ?: throw SetupException("fukurou.memoryBudgetMb must be a positive number of megabytes, got '$value'")
                 },
                 plugins = own.filterKeys { it.startsWith(PLUGIN_PREFIX) && it.length > PLUGIN_PREFIX.length }
                     .filterValues { it.isNotBlank() }
-                    .map { (key, value) -> key.removePrefix(PLUGIN_PREFIX) to Path.of(value.trim()) }
+                    .map { (key, value) -> key.removePrefix(PLUGIN_PREFIX) to absolute(value.trim()) }
                     .toMap(),
                 selectionTests = splitList(prop("fukurou.selection.tests")),
                 selectionTags = splitList(prop("fukurou.selection.tags")),
@@ -90,6 +91,12 @@ public data class FukurouConfig(
                 properties = own,
             )
         }
+
+        /** JVM の cwd を基準に絶対パスへ正規化する。子プロセスの cwd に左右されないようにする。 */
+        private fun absolute(value: String): Path = Path.of(value).toAbsolutePath().normalize()
+
+        /** 区切りを含む（パスで指定された）実行ファイルだけ絶対パスにする。"java" のような名前は PATH の検索に任せる。 */
+        private fun executable(value: String): Path = if ('/' in value) absolute(value) else Path.of(value)
 
         /** "true" / "false"（大文字小文字は問わない）だけを受け付ける。打ち間違いを黙って false にしない。 */
         private fun parseBoolean(key: String, value: String?): Boolean? = when (value?.lowercase()) {

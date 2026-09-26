@@ -24,8 +24,9 @@ class FukurouConfigTest {
         val defaultOnly = FukurouConfig.fromSources(mapOf("fukurou.workDir.default" to "/d"), emptyMap())
         assertEquals(Path.of("/d"), defaultOnly.workDir)
         val none = FukurouConfig.fromSources(emptyMap(), emptyMap())
-        assertEquals(Path.of(".fukurou-work"), none.workDir)
-        assertEquals(Path.of("fukurou-out"), none.outDir)
+        assertEquals(Path.of(".fukurou-work").toAbsolutePath().normalize(), none.workDir)
+        assertTrue(none.workDir.isAbsolute)
+        assertEquals(Path.of("fukurou-out").toAbsolutePath().normalize(), none.outDir)
         assertFalse(none.acceptEula)
         assertEquals(MissingHostPolicy.FAIL, none.missingHost)
         assertNull(none.memoryBudgetMb)
@@ -43,7 +44,7 @@ class FukurouConfigTest {
             ),
             emptyMap(),
         )
-        assertEquals(mapOf("minestamp" to Path.of("build/libs/a.jar")), config.plugins)
+        assertEquals(mapOf("minestamp" to Path.of("build/libs/a.jar").toAbsolutePath()), config.plugins)
         assertEquals(listOf("a", "b"), config.selectionTests)
         assertTrue(config.acceptEula)
         assertFalse("java.version" in config.properties)

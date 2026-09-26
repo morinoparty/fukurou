@@ -76,11 +76,12 @@ internal class PaperPlatform(
         val command = listOf(
             request.serverJava.toString(),
             "-Xmx${request.serverHeap}",
-            "-DbundlerRepoDir=$bundlerDir",
+            // cwd はサーバーのディレクトリになるので、相対パスが紛れても壊れないよう絶対パスで渡す
+            "-DbundlerRepoDir=${bundlerDir.toAbsolutePath()}",
             // 古いビルドを使うと更新を促すために起動を 20 秒止めるため、それを抑止する
             "-DIReallyKnowWhatIAmDoingISwear=true",
             "-jar",
-            jar.toString(),
+            jar.toAbsolutePath().toString(),
             "--nogui",
         )
         return Provisioned(

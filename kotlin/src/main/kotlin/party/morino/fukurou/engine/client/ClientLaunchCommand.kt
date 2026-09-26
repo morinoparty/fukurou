@@ -25,15 +25,16 @@ internal data class ClientLaunchCommand(
 ) {
     /** 共通の引数。 */
     fun base(): List<String> = buildList {
-        add(executable.toString())
+        // ClientProcess は tools の親で起動するので、相対パスが紛れても壊れないよう argv のパスは絶対パスにする
+        add(executable.toAbsolutePath().toString())
         // 機械向けの出力にして、ログに進捗バーの制御文字が混ざらないようにする
-        addAll(listOf("--output", "machine", "--main-dir", mainDir.toString()))
-        addAll(listOf("start", version, "--mc-dir", clientDir.toString()))
+        addAll(listOf("--output", "machine", "--main-dir", mainDir.toAbsolutePath().toString()))
+        addAll(listOf("start", version, "--mc-dir", clientDir.toAbsolutePath().toString()))
         // 複数クライアントを同じランナーで動かすため、ヒープは控えめにする
         add("--jvm-arg=-Xms512M,-Xmx$heap")
         addAll(listOf("--resolution", ClientOptions.RESOLUTION, "--username", username))
         // java を指定したときだけ PortableMC の選ぶ JVM を上書きする
-        java?.let { addAll(listOf("--jvm", it.toString())) }
+        java?.let { addAll(listOf("--jvm", if (it.toString().contains('/')) it.toAbsolutePath().toString() else it.toString())) }
     }
 
     /** クライアント本体とアセットをダウンロードだけする（--dry）。 */
