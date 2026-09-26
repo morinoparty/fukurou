@@ -206,16 +206,8 @@ runs:
     - name: Install the virtual display and client dependencies
       if: inputs.skip-system-deps != 'true'
       shell: bash
-      run: |
-        # GPU の無いランナーで Mesa のソフトウェアレンダリングを使うための描画・音声ライブラリも入れる。
-        # 26.3 以降のクライアント（renderpearl）は Xvfb で OpenGL のウィンドウを作れないことがあるため、
-        # ソフトウェア実装の Vulkan（lavapipe）も入れて Vulkan バックエンドで描画できるようにする
-        sudo apt-get update
-        sudo apt-get install --no-install-recommends -y \
-          xvfb xdotool \
-          libgl1 libgl1-mesa-dri libglx-mesa0 libegl1 libopenal1 \
-          libvulkan1 mesa-vulkan-drivers \
-          libxrandr2 libxinerama1 libxcursor1 libxi6
+      # パッケージの一覧は setup/action.yml（Kotlin 版）と共有するスクリプトにまとめてある
+      run: bash "$GITHUB_ACTION_PATH/scripts/install-system-deps.sh"
 
     - name: Determine the Java version for the server
       id: java

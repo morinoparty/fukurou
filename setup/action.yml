@@ -1,0 +1,47 @@
+name: fukurou setup
+description: Install the virtual display, input and software-rendering packages and restore the tool/asset cache for fukurou (Kotlin).
+inputs:
+  minecraft-version:
+    description: Minecraft version (cache key)
+    required: true
+  work-dir:
+    description: Work directory for tools and caches (default is $RUNNER_TEMP/fukurou-work)
+    required: false
+    default: ""
+  skip-system-deps:
+    description: '"true" skips apt-get'
+    required: false
+    default: "false"
+outputs:
+  work-dir:
+    description: Resolved work directory
+    value: ${{ steps.prep.outputs.work-dir }}
+runs:
+  using: composite
+  steps:
+    - id: prep
+      shell: bash
+      env:
+        WORK_DIR: ${{ inputs.work-dir }}
+      run: |
+        # 入力の既定値ではコンテキストを展開できないため、ここで runner.temp を既定にする
+        dir="${WORK_DIR:-$RUNNER_TEMP/fukurou-work}"
+        echo "work-dir=$dir" >> "$GITHUB_OUTPUT"
+        echo "FUKUROU_WORK_DIR=$dir" >> "$GITHUB_ENV"
+        # クライアントの子プロセスには fukurou 自身も設定するが、Python 版とそろえて環境にも入れる
+        echo "LIBGL_ALWAYS_SOFTWARE=true" >> "$GITHUB_ENV"
+
+    - name: Install the virtual display and client dependencies
+      if: inputs.skip-system-deps != 'true'
+      shell: bash
+      # owner/repo/sub@ref のアクションはリポジトリ全体が取得されるので、setup/ から ../scripts を参照できる
+      run: bash "$GITHUB_ACTION_PATH/../scripts/install-system-deps.sh"
+
+    - name: Restore the fukurou tool and asset cache
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ steps.prep.outputs.work-dir }}/tools
+          ${{ steps.prep.outputs.work-dir }}/cache
+        key: fukurou-kotlin-portablemc-5.0.4-${{ runner.os }}-${{ inputs.minecraft-version }}
+        restore-keys: fukurou-kotlin-portablemc-5.0.4-${{ runner.os }}-
