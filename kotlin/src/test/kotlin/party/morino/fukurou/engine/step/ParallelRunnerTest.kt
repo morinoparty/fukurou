@@ -8,14 +8,17 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import party.morino.fukurou.engine.test.ActiveTests
 import party.morino.fukurou.engine.test.StepHost
 import party.morino.fukurou.engine.test.TestRun
 import party.morino.fukurou.error.ClientDiedException
@@ -158,6 +161,36 @@ class ParallelRunnerTest {
             }
         }
         assertEquals("Alice: client exited with code 1", steps().single().error)
+    }
+
+    @Test
+    @DisplayName("A step cancelled by the caller's own timeout is skipped, not failed")
+    fun callerTimeout() {
+        val run = begin()
+        runBlocking(StepScope(run)) {
+            // 「来ないこと」を確かめる使い方。テストは成功のまま進む
+            val result = withTimeoutOrNull(100.milliseconds) { step("Alice", "never") { delay(30.seconds) } }
+            assertNull(result)
+        }
+        val step = steps().single()
+        assertEquals(StepStatus.SKIPPED, step.status)
+        assertNull(run.firstFailedStep)
+    }
+
+    @Test
+    @DisplayName("Log waits in a scope that records nothing ignore the finished test's deadline")
+    fun deadlineOutsideTest() {
+        val run = begin()
+        ActiveTests.begin(run, run)
+        try {
+            runBlocking {
+                assertSame(run.deadline, StepRunner.deadlineOf(host))
+                // tearDown / onStarted は StepScope(run = null) で走る
+                withContext(StepScope(run = null)) { assertNull(StepRunner.deadlineOf(host)) }
+            }
+        } finally {
+            ActiveTests.finish(run)
+        }
     }
 
     @Test

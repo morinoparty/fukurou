@@ -135,12 +135,20 @@ internal object StepRunner {
             finish(run, event, StepStatus.PASSED, started, null, screenshotOf(result))
             return result
         } catch (cancelled: CancellationException) {
-            // ハーネスが打ち切った（parallel の期限切れ・兄弟のレーンでのサーバーの死亡・JUnit の割り込み）。
             // ステップ自身の失敗ではないので死亡の判定はしない（step_executor.py:95）
-            val reason = block?.cancelReason ?: cancelled.message ?: "cancelled"
-            runHost.warn("step ${event.provisionalId} cancelled: $reason")
-            val failed = finish(run, event, StepStatus.FAILED, started, reason, null)
-            run.stepFailed(failed, null)
+            if (block?.cancelReason != null || run.deadline.isExceeded) {
+                // ハーネスが打ち切った（parallel の期限切れ・兄弟のレーンでのサーバーの死亡）。テストの失敗の候補にする
+                val reason = block?.cancelReason ?: cancelled.message ?: "cancelled"
+                runHost.warn("step ${event.provisionalId} cancelled: $reason")
+                val failed = finish(run, event, StepStatus.FAILED, started, reason, null)
+                run.stepFailed(failed, null)
+            } else {
+                // 呼び出し元が取り消した（利用者の withTimeoutOrNull で「来ないこと」を確かめる、など）。
+                // ステップは失敗していないので FAILED にせず（TestRecorder が FAILED から最初の失敗を決めるため）、
+                // テストの失敗の候補にもしない
+                runHost.log("step ${event.provisionalId} cancelled by the caller: ${cancelled.message ?: "cancelled"}")
+                finish(run, event, StepStatus.SKIPPED, started, "cancelled by the caller: ${cancelled.message ?: "cancelled"}", null)
+            }
             throw cancelled
         } catch (error: Throwable) {
             throw classify(run, event, started, error)
@@ -148,6 +156,15 @@ internal object StepRunner {
             if (lane != null) block?.stepEnded(lane, event)
         }
     }
+
+    /**
+     * host のログ待ちが従うテストの期限。ステップの記録先と同じ規則で決める。
+     *
+     * 記録しないスコープ（tearDown・onStarted の StepScope(run = null)）では期限を付けない。
+     * tearDown は ActiveTests.finish の前に走るので、実行中のテストだけで探すと、期限切れで終わったテストの
+     * 残り 0 秒が後片付けの待ちまで即座に打ち切ってしまう。
+     */
+    fun deadlineOf(host: StepHost): TestDeadline? = resolve(StepScope.currentBlocking(), host)?.deadline
 
     /** 記録先を決める。スコープのテストがこのサーバーのものならそれ、違えばこのサーバーで実行中のテスト。 */
     private fun resolve(scope: StepScope?, host: StepHost?): TestRun? {

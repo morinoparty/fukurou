@@ -31,7 +31,6 @@ import party.morino.fukurou.engine.client.ClientProcess
 import party.morino.fukurou.engine.log.LogWindow
 import party.morino.fukurou.engine.log.WindowedLogView
 import party.morino.fukurou.engine.step.StepRunner
-import party.morino.fukurou.engine.test.ActiveTests
 import party.morino.fukurou.engine.test.TestRun
 import party.morino.fukurou.engine.x11.KeycodeResolver
 import party.morino.fukurou.engine.x11.MinecraftWindow
@@ -140,7 +139,8 @@ internal class PlayerSession(
         source = "${profile.name}'s client log",
         artifactPath = { clientLogPath },
         liveness = server::checkLiveness,
-        deadline = { ActiveTests.on(server)?.deadline },
+        // tearDown など記録しないスコープではテストの期限を使わない
+        deadline = { StepRunner.deadlineOf(server) },
     )
 
     // --- 起動と停止 -----------------------------------------------------------------
