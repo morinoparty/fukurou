@@ -3,6 +3,8 @@ package party.morino.fukurou.junit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import party.morino.fukurou.Fukurou
@@ -205,7 +207,11 @@ internal class ServerLease private constructor(
             phase = RunFailurePhase.SETUP
             onStarted(extension)
         } catch (error: Throwable) {
-            if (error is CancellationException) throw error
+            // 呼び出し元（LeaseRegistry.acquire の runBlocking）は取り消されないので、ここに届く取り消しは
+            // 利用者の onStarted の withTimeout など中から来たもの。本当に取り消されたときだけそのまま伝え、
+            // それ以外は起動の失敗として記録する（記録しないと started のまま次のクラスが onStarted なしで走る）
+            if (error is CancellationException && !currentCoroutineContext().isActive) throw error
+            if (server.isShuttingDown()) throw error
             started = true
             startFailure = error
             val message = StatusMapper.messageOf(error)
@@ -216,6 +222,27 @@ internal class ServerLease private constructor(
             }
             // 起動したプロセス（参加に失敗したときのサーバーなど）を残さない
             withContext(NonCancellable) { runCatching { server.stopSession(message) } }
+            // 取り消しのまま投げると JUnit が中断と区別できないので、起動の失敗として包む
+            if (error is CancellationException) throw FukurouException("${phase.name.lowercase()} failed: $message", error)
+            throw error
+        }
+    }
+
+    /**
+     * fresh-server で作り直した直後（beforeEach の中）に onStarted を呼び直す。
+     * 失敗したら起動の失敗（setup）として記録し、以後のテストを走らせない。テストはまだ始めていないので、ここで記録する。
+     */
+    suspend fun restarted(extension: GameServerExtension) {
+        try {
+            onStarted(extension)
+        } catch (error: Throwable) {
+            if (error is CancellationException && !currentCoroutineContext().isActive) throw error
+            if (server.isShuttingDown()) throw error
+            val message = "setup failed after a fresh-server restart: ${StatusMapper.messageOf(error)}"
+            server.harness.error(message, error)
+            server.recorder.runFailed(RunFailurePhase.SETUP, message)
+            server.abort(message)
+            if (error is CancellationException) throw FukurouException(message, error)
             throw error
         }
     }

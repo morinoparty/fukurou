@@ -27,6 +27,7 @@ import party.morino.fukurou.engine.net.MojangApi
 import party.morino.fukurou.engine.process.HostCheck
 import party.morino.fukurou.junit.fixture.FakeArenaTemplateTests
 import party.morino.fukurou.junit.fixture.FakeArenaTests
+import party.morino.fukurou.junit.fixture.SlowTearDownArenaTests
 import party.morino.fukurou.junit.fixture.TwinArenaTests
 import party.morino.fukurou.junit.fixture.platform.FakeEnvironment
 import java.net.InetSocketAddress
@@ -120,6 +121,19 @@ class GameServerExtensionLifecycleTest {
         // 始めた後に skipped になったテストはセッションの一覧に載せない（contract.md §2）
         val sessionTests = result["sessions"]!!.jsonArray.single().jsonObject["tests"]!!.jsonArray.map { (it as JsonPrimitive).content }
         assertEquals(listOf("repeated-1", "repeated-2"), sessionTests)
+    }
+
+    @Test
+    @DisplayName("closes every test even when tearDown is cancelled by the user's own timeout")
+    fun cancelledTearDown() {
+        val summary = execute(selectClass(SlowTearDownArenaTests::class.java))
+        assertEquals(2, summary.testsSucceededCount, summary.failures.joinToString { it.exception.toString() })
+        val tests = onlyResult()["tests"]!!.jsonArray.map { it.jsonObject }.associateBy { it.string("id") }
+        assertEquals("passed", tests.getValue("a-first").string("status"))
+        assertEquals("passed", tests.getValue("b-second").string("status"))
+        // 2 件目のステップは 2 件目の記録に入る（入れ替わらない）
+        val steps = tests.getValue("b-second")["steps"]!!.jsonArray.map { it.jsonObject.string("label") }
+        assertEquals(listOf("say second"), steps)
     }
 
     @Test

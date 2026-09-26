@@ -20,6 +20,7 @@ import party.morino.fukurou.Fukurou
 import party.morino.fukurou.FukurouConfig
 import party.morino.fukurou.MissingHostPolicy
 import party.morino.fukurou.engine.process.HostCheck
+import party.morino.fukurou.engine.session.ServerInstance
 import party.morino.fukurou.engine.step.StepScope
 import party.morino.fukurou.junit.platform.FukurouExtensions
 import party.morino.fukurou.player.PlayerProfile
@@ -163,6 +164,8 @@ public abstract class GameServerExtension :
         val method = context.requiredTestMethod
         val id = lease.testId(testClass, method, context.uniqueId)
         lease.beforeEachError = null
+        // JVM の終了（取り消し）の後は何も記録せずに飛ばす（未実行のテストは not run のまま残す）
+        if (lease.server.isShuttingDown()) throw TestAbortedException(ServerInstance.SKIP_INTERRUPTED)
         // 死んだサーバーや起動し直せなかったクライアントでは走らせない（理由付きの skipped）
         lease.abortReason?.let { reason ->
             lease.server.recorder.testSkipped(id, reason)
@@ -175,13 +178,14 @@ public abstract class GameServerExtension :
             try {
                 server.prepareTest(lease.wantsFresh(identity))
             } catch (error: Throwable) {
-                if (error is CancellationException) throw error
+                if (error is CancellationException || server.isShuttingDown()) throw error
                 // 作り直しや再起動の失敗は run の失敗として記録済み。このテストと残りのテストを理由付きの skipped にする
                 server.recorder.skipPending(server.deadReason ?: StatusMapper.messageOf(error))
                 throw error
             }
-            // fresh-server で新しいセッションになったなら、起動直後の処理をやり直す
-            if (server.sessionIndex != session) lease.onStarted(this@GameServerExtension)
+            // fresh-server で新しいセッションになったなら、起動直後の処理をやり直す。
+            // 失敗は beginTest より前なので afterEach は何も記録しない。ここで起動の失敗として記録し、以後のテストを止める
+            if (server.sessionIndex != session) lease.restarted(this@GameServerExtension)
             // 同じ JUnit のテストを 2 台のサーバーで実行できるよう、持ち主は JUnit の unique id にする
             val run = server.beginTest(id, lease.timeoutOf(identity), owner = context.uniqueId)
             lease.current = run
@@ -216,18 +220,21 @@ public abstract class GameServerExtension :
         val run = lease.current ?: return
         runBlocking {
             try {
-                // tearDown のステップと失敗は harness.log にだけ残し、テストの結果を変えない
+                // tearDown のステップと失敗は harness.log にだけ残し、テストの結果を変えない。
+                // この runBlocking は外から取り消されないので、届く取り消しは利用者の withTimeout などの失敗として同じに扱う
                 withContext(StepScope(run = null)) { lease.server.tearDown() }
             } catch (error: Throwable) {
-                if (error is CancellationException) throw error
                 lease.server.harness.error("tearDown of ${run.testId} failed: ${StatusMapper.messageOf(error)}", error)
-            }
-            val error = lease.beforeEachError ?: context.executionException.orElse(null)
-            try {
-                lease.server.finishTest(run, error)
             } finally {
-                lease.current = null
-                lease.beforeEachError = null
+                // テストは必ず閉じる。閉じないと ActiveTests に残り、次のテストの beginTest が失敗して 2 件の記録が入れ替わる
+                val error = lease.beforeEachError ?: context.executionException.orElse(null)
+                try {
+                    // finishTest は NonCancellable の中で走るので、取り消しの途中でも最後まで記録する
+                    lease.server.finishTest(run, error)
+                } finally {
+                    lease.current = null
+                    lease.beforeEachError = null
+                }
             }
         }
     }
