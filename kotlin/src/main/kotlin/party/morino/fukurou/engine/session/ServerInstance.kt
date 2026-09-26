@@ -614,7 +614,7 @@ internal class ServerInstance private constructor(
      *
      * run の失敗は呼び出し元が先に記録しておく（最初の失敗だけが残るため）。
      */
-    suspend fun abort(reason: String) = withContext(NonCancellable) {
+    suspend fun abort(reason: String): Unit = withContext(NonCancellable) {
         if (deadReason == null) deadReason = reason
         recorder.skipPending(reason)
         runCatching { stopSession(reason) }.onFailure { harness.error("could not stop the session after: $reason", it) }
