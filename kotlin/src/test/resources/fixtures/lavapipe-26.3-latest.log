@@ -1,0 +1,8 @@
+[15:27:14] [main/INFO]: Loading Minecraft 26.3 with Fabric Loader disabled
+[15:27:15] [main/INFO]: Setting user: Alice
+[15:27:16] [Render thread/INFO]: Backend library: LWJGL version 3.3.3-snapshot
+[15:27:17] [Render thread/WARN]: GLFW error 65543: GLX: Failed to create context: GLXBadFBConfig
+[15:27:19] [Render thread/ERROR]: Failed to create backend OpenGL
+[15:27:19] [Render thread/INFO]: Trying next graphics backend
+[15:27:19] [Render thread/ERROR]: Failed to create backend Vulkan
+[15:27:19] [Render thread/WARN]: No usable graphics backend, waiting
