@@ -51,13 +51,16 @@ dependencies {
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
-    testRuntimeOnly(libs.junit.platform.launcher)
+    // 拡張の一連の流れを入れ子のランチャーで確かめる（GameServerExtensionLifecycleTest）
+    testImplementation(libs.junit.platform.launcher)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.json.schema.validator)
 }
 
 tasks.test {
     useJUnitPlatform()
+    // 偽のサーバーを使うテストクラスは GameServerExtensionLifecycleTest が入れ子のランチャーで実行する
+    exclude("party/morino/fukurou/junit/fixture/**")
     // result.json の契約（../schema/result.v2.json）で出力を検証する
     systemProperty("fukurou.schemaDir", rootDir.resolve("../schema").absolutePath)
     // pydantic との突き合わせに使う golden を書き出す場所

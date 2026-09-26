@@ -33,9 +33,18 @@ internal object HostCheck {
             ?.let(::message)
     }
 
+    /**
+     * 確認の本体。単体テストは Xvfb の無いホストでも偽の種類を起動できるよう差し替える（本番では差し替えない）。
+     */
+    @Volatile
+    var probe: () -> String? = { outcome }
+
+    /** 足りないものを示すメッセージ。問題が無ければ null（MissingHostPolicy.SKIP の判定に使う）。 */
+    fun problemMessage(): String? = probe()
+
     /** ホストが条件を満たさなければ SetupException。2 回目以降は覚えた結果を返すだけ。 */
     fun ensure(@Suppress("UNUSED_PARAMETER") config: FukurouConfig) {
-        outcome?.let { throw SetupException(it) }
+        problemMessage()?.let { throw SetupException(it) }
     }
 
     /** 足りないもの（OS・アーキテクチャ・道具）を並べる。純粋関数ではないが、PATH を渡せるのでテストできる。 */

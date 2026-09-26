@@ -20,8 +20,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  * JVM 内で共有するキャッシュ・作業ディレクトリ・出力先・予算を持つルート。生成したサーバーはすべてここが所有する。
  *
  * @property config 設定
+ * @param mojangApi Mojang のバージョン情報の取得先（単体テストで手元のサーバーに向ける。null なら本物）
  */
-public class Fukurou(public val config: FukurouConfig) : AutoCloseable {
+public class Fukurou internal constructor(public val config: FukurouConfig, private val mojangApi: MojangApi?) : AutoCloseable {
+    /** 設定から作る。 */
+    public constructor(config: FukurouConfig) : this(config, null)
+
     public companion object {
         /** fukurou.* システムプロパティと FUKUROU_* 環境変数から作る（純粋な FukurouConfig.fromSources を使う）。 */
         public fun fromSystemProperties(): Fukurou {
@@ -30,12 +34,19 @@ public class Fukurou(public val config: FukurouConfig) : AutoCloseable {
             return Fukurou(FukurouConfig.fromSources(properties, System.getenv()))
         }
 
+        /** 共有インスタンス（閉じた後は次の参照で作り直す）。 */
+        private var sharedInstance: Fukurou? = null
+
         /**
          * JUnit 拡張が使う JVM 共有インスタンス。最初の参照で作る。
          *
-         * 閉じるのは LeaseRegistry の close とシャットダウンフック（WP6 / WP7）。
+         * 閉じるのは LeaseRegistry（エンジンの実行の終わりに JUnit がルートストアを閉じるとき）とシャットダウンフック。
+         * 同じ JVM で JUnit の実行が 2 回ある（ランチャーを入れ子で使う）場合に備え、閉じた後の参照では作り直す。
          */
-        public val shared: Fukurou by lazy { fromSystemProperties() }
+        public val shared: Fukurou
+            get() = synchronized(this) {
+                sharedInstance?.takeUnless { it.closed.get() } ?: fromSystemProperties().also { sharedInstance = it }
+            }
     }
 
     /** 参加前のプレイヤー。操作は持たない。名前の規則は [PlayerProfile] を参照。 */
@@ -52,7 +63,7 @@ public class Fukurou(public val config: FukurouConfig) : AutoCloseable {
     internal val downloader: Downloader by lazy { Downloader() }
 
     /** Mojang のバージョン情報（マニフェストを 1 回だけ取得する）。 */
-    internal val mojang: MojangApi by lazy { MojangApi() }
+    internal val mojang: MojangApi by lazy { mojangApi ?: MojangApi() }
 
     /** プラグインの解決（URL のダウンロードをこのインスタンスの中で使い回す）。 */
     internal val pluginResolver: PluginResolver by lazy { PluginResolver(config, downloader) }
