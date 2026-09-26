@@ -1,0 +1,33 @@
+[versions]
+kotlin = "2.4.20"
+# api で公開する。1.11.0 を使う利用側（MineStamp）はそちらに解決される
+coroutines = "1.10.2"
+# Maven Central の最新リリース（1.12.0 は RC のみ）
+serialization = "1.11.0"
+# class major 65 = Java 21
+adventure = "5.2.0"
+# compileOnly の下限（Store.computeIfAbsent(K, Function, Class) は 6.0 から）
+junit-api-min = "6.0.0"
+# 自身のテスト
+junit = "6.1.3"
+json-schema-validator = "1.5.8"
+
+[libraries]
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+adventure-api = { module = "net.kyori:adventure-api", version.ref = "adventure" }
+adventure-key = { module = "net.kyori:adventure-key", version.ref = "adventure" }
+adventure-gson = { module = "net.kyori:adventure-text-serializer-gson", version.ref = "adventure" }
+adventure-plain = { module = "net.kyori:adventure-text-serializer-plain", version.ref = "adventure" }
+junit-jupiter-api-min = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit-api-min" }
+junit-platform-launcher-min = { module = "org.junit.platform:junit-platform-launcher", version = "6.0.0" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
+kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

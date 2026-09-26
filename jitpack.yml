@@ -1,0 +1,5 @@
+# リポジトリの直下は Python のプロジェクトなので、Kotlin のライブラリは kotlin/ でビルドする
+jdk:
+  - openjdk21
+install:
+  - cd kotlin && chmod +x gradlew && ./gradlew publishToMavenLocal -x test --no-daemon --console=plain
