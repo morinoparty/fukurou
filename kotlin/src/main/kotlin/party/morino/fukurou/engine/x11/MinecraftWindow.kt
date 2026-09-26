@@ -39,14 +39,14 @@ internal class MinecraftWindow(
         focus()
         // keysym 名のまま渡すと xdotool が F5 を Alt+F5 等に解決することがあるため、修飾キーなしのキーコードで送る
         val keycode = keycodes.unmodifiedKeycode(display, key.keysym)
-        Xdotool.run(display, "key", "--clearmodifiers", "--delay", "100", keycode.toString())
+        Xdotool.run(display, "key", "--clearmodifiers", "--delay", "100", keyToken(key.keysym, keycode))
     }
 
     /** キーコードを + でつないで同時に押す。先に書いたキーから順に押し、逆順に離す。 */
     suspend fun pressChord(chord: Chord) {
         focus()
         // pressKey と同じく修飾キーなしのキーコードに変換し、xdotool の "+" 区切りで 1 つのコードとして送る
-        val codes = chord.keys.map { keycodes.unmodifiedKeycode(display, it.keysym) }
+        val codes = chord.keys.map { keyToken(it.keysym, keycodes.unmodifiedKeycode(display, it.keysym)) }
         Xdotool.run(display, "key", "--clearmodifiers", "--delay", "100", codes.joinToString("+"))
     }
 
@@ -63,6 +63,19 @@ internal class MinecraftWindow(
     }
 
     companion object {
+        /**
+         * 純粋関数。xdotool key に渡す 1 キー分のトークン。
+         *
+         * xdotool はまずトークンを XStringToKeysym で keysym 名として読み、読めなかったときだけ数字をキーコードとみなす。
+         * 1 桁の数字（"0"〜"9"）は数字キーの keysym 名として読まれてしまうため（Escape のキーコード 9 が '9' になる）、
+         * 10 未満のキーコードは keysym 名のまま渡す。修飾キーなしで押せることは呼び出し側が KeycodeResolver で確かめ済み。
+         */
+        fun keyToken(keysym: String, keycode: Int): String =
+            if (keycode < SINGLE_DIGIT_LIMIT) keysym else keycode.toString()
+
+        /** これ未満のキーコードは 1 桁の数字になり、xdotool が keysym 名と取り違える。 */
+        private const val SINGLE_DIGIT_LIMIT = 10
+
         /** 26.x のクライアントは WM_CLASS が com.mojang.minecraft になる。古い版はタイトルで探す。 */
         private val WINDOW_QUERIES = listOf(
             "--class" to """^com\.mojang\.minecraft$""",
