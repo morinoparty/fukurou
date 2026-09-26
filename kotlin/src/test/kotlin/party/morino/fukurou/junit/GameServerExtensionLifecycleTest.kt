@@ -13,13 +13,16 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.platform.engine.DiscoverySelector
 import org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
+import org.junit.platform.engine.discovery.DiscoverySelectors.selectMethod
 import org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder
 import org.junit.platform.launcher.core.LauncherFactory
 import org.junit.platform.launcher.listeners.SummaryGeneratingListener
 import org.junit.platform.launcher.listeners.TestExecutionSummary
 import party.morino.fukurou.Fukurou
 import party.morino.fukurou.FukurouConfig
+import party.morino.fukurou.MissingHostPolicy
 import party.morino.fukurou.engine.net.MojangApi
 import party.morino.fukurou.engine.process.HostCheck
 import party.morino.fukurou.junit.fixture.FakeArenaTests
@@ -77,7 +80,7 @@ class GameServerExtensionLifecycleTest {
     @Test
     @DisplayName("runs passing, failing and version-disabled tests and writes the final result.json")
     fun lifecycle() {
-        val summary = execute(FakeArenaTests::class.java)
+        val summary = execute(selectClass(FakeArenaTests::class.java))
         assertEquals(1, summary.testsSucceededCount, summary.failures.joinToString { it.exception.toString() })
         assertEquals(1, summary.testsFailedCount)
         assertEquals(1, summary.testsSkippedCount)
@@ -98,12 +101,35 @@ class GameServerExtensionLifecycleTest {
         val session = result["sessions"]!!.jsonArray.single().jsonObject
         assertTrue(session["finishedAt"] is JsonPrimitive && session.string("finishedAt") != null)
         assertTrue(FakeEnvironment.commands.containsAll(listOf("setup", "say hi", "fail now")))
+        // 実行の終わりに、リースが使った Fukurou も閉じる
+        assertTrue(FakeEnvironment.fukurou.isClosed)
+    }
+
+    @Test
+    @DisplayName("writes stubs only for the selected tests")
+    fun selection() {
+        val summary = execute(selectMethod(FakeArenaTests::class.java, FakeArenaTests::class.java.getDeclaredMethod("runs only on a future version")))
+        assertEquals(1, summary.testsSkippedCount)
+        val ids = onlyResult()["tests"]!!.jsonArray.map { it.jsonObject.string("id") }
+        assertEquals(listOf("runs-only-on-a-future-version"), ids)
+    }
+
+    @Test
+    @DisplayName("aborts the class without writing a result when the host lacks tools and missingHost is skip")
+    fun missingHostSkip() {
+        val config = FakeEnvironment.fukurou.config.copy(missingHost = MissingHostPolicy.SKIP)
+        FakeEnvironment.fukurou = Fukurou(config)
+        HostCheck.probe = { "Xvfb is not on PATH (package xvfb)" }
+        val summary = execute(selectClass(FakeArenaTests::class.java))
+        assertEquals(1, summary.containersAbortedCount)
+        assertEquals(0, summary.testsSucceededCount + summary.testsFailedCount)
+        assertTrue(!dir.resolve("out").isDirectory() || dir.resolve("out").listDirectoryEntries().isEmpty())
     }
 
     @Test
     @DisplayName("resolves each extension by type and refuses an ambiguous GameServer parameter")
     fun twoServers() {
-        val summary = execute(TwinArenaTests::class.java)
+        val summary = execute(selectClass(TwinArenaTests::class.java))
         assertEquals(1, summary.testsSucceededCount, summary.failures.joinToString { it.exception.toString() })
         val failure = summary.failures.single().exception.message.orEmpty()
         assertTrue("declare the parameter as FakeArena or TwinArena" in failure, failure)
@@ -111,10 +137,10 @@ class GameServerExtensionLifecycleTest {
         assertEquals(2, dir.resolve("out").listDirectoryEntries().count { Files.exists(it.resolve("result.json")) })
     }
 
-    /** テストクラスを入れ子のランチャーで実行する。 */
-    private fun execute(testClass: Class<*>): TestExecutionSummary {
+    /** 選んだテストを入れ子のランチャーで実行する（計画のリスナーも ServiceLoader で登録される）。 */
+    private fun execute(selector: DiscoverySelector): TestExecutionSummary {
         val listener = SummaryGeneratingListener()
-        val request = LauncherDiscoveryRequestBuilder.request().selectors(selectClass(testClass)).build()
+        val request = LauncherDiscoveryRequestBuilder.request().selectors(selector).build()
         LauncherFactory.create().execute(request, listener)
         return listener.summary
     }

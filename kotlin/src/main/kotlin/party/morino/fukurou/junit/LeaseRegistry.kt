@@ -7,6 +7,7 @@ import party.morino.fukurou.junit.platform.FukurouExtensions
 import party.morino.fukurou.junit.platform.TestIdentity
 import party.morino.fukurou.result.output.ArtifactLayout
 import party.morino.fukurou.result.output.ResultIds
+import party.morino.fukurou.server.ServerDefinition
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
@@ -30,6 +31,9 @@ internal object LeaseRegistry {
 
     /** 生きているリース（拡張のクラス → リース）。 */
     private val leases = ConcurrentHashMap<Class<out GameServerExtension>, ServerLease>()
+
+    /** リースが使った Fukurou（実行の終わりに閉じる）。リースは close で leases から外れるので別に持つ。 */
+    private val owners: MutableSet<Fukurou> = ConcurrentHashMap.newKeySet()
 
     /** この実行で古い run ディレクトリを片付けたか。 */
     @Volatile
@@ -60,15 +64,19 @@ internal object LeaseRegistry {
     /** リースを作る。この実行で最初のリースなら、先に古い run ディレクトリを片付ける。 */
     private fun create(extension: GameServerExtension, testClass: Class<*>): ServerLease {
         val fukurou = extension.fukurou()
-        pruneOnce(fukurou, extension)
         val definition = extension.buildDefinition(fukurou)
-        // 計画のリスナーが無い（IDE の一部や EngineTestKit など）ときは、今のクラスのテストだけを計画にする
+        pruneOnce(fukurou, extension.javaClass, definition)
+        // 計画のリスナーが無い（IDE の一部など）ときは、今のクラスのテストだけを計画にする（他のクラスは beforeAll で足す）
         val identities = plan[extension.javaClass] ?: FukurouExtensions.testMethods(testClass)
             .map { TestIdentity.of(testClass, it, FukurouExtensions.tags(testClass, it)) }
         val lease = ServerLease.open(extension.javaClass, fukurou, definition, identities)
         leases[extension.javaClass] = lease
+        owners += fukurou
         return lease
     }
+
+    /** 計画のリスナーがこの拡張のテストを計画したか（したなら、フィルタで外れたテストを足してはいけない）。 */
+    fun hasPlan(extensionClass: Class<*>): Boolean = extensionClass in plan
 
     /**
      * 使い始める: 予算を確かめ、足りなければ使われていないリースを古い順に止めてから起動する（§5.2）。
@@ -105,11 +113,12 @@ internal object LeaseRegistry {
      * エンジンの実行の終わり: すべてのリースを閉じ（サーバーを止めて result.json を確定し）、使った Fukurou を閉じる。
      */
     fun closeAll() {
-        val closing = leases.values.toList()
-        val owners = closing.map { it.fukurou }.distinct()
-        closing.forEach { lease -> runCatching { lease.close() } }
-        owners.forEach { runCatching { it.close() } }
+        // JUnit は後に置いた値から閉じるので、通常はリースが先に閉じている。残っていれば（例外などで）ここで閉じる
+        leases.values.toList().forEach { lease -> runCatching { lease.close() } }
+        val closing = owners.toList()
+        closing.forEach { runCatching { it.close() } }
         // 同じ JVM で次の実行（入れ子のランチャーなど）があっても、前の実行の状態を持ち越さない
+        owners.removeAll(closing.toSet())
         leases.clear()
         pruned = false
         budget = null
@@ -128,15 +137,18 @@ internal object LeaseRegistry {
      * この実行の最初のリースを作る前に、この JVM で計画していない古い run ディレクトリ（印のあるもの）を消す。
      * 前の実行の結果が今回の artifact に混ざらないようにする。
      */
-    private fun pruneOnce(fukurou: Fukurou, extension: GameServerExtension) {
+    private fun pruneOnce(fukurou: Fukurou, extensionClass: Class<out GameServerExtension>, definition: ServerDefinition) {
         if (pruned) return
         pruned = true
-        val kinds = plan.keys + extension.javaClass
-        val keep = kinds.mapNotNull { kind ->
+        val others = plan.keys - extensionClass
+        val keep = others.mapNotNull { kind ->
             // run id は種類・版・label から決まる。作れない拡張の分は（どうせ作り直すので）残さなくてよい
-            val instance = if (kind == extension.javaClass) extension else FukurouExtensions.instantiate(kind)
-            runCatching { instance?.buildDefinition(fukurou)?.let { ResultIds.runId(it.type.id, it.type.minecraftVersion.id, it.label) } }.getOrNull()
-        }.toSet()
+            runCatching { FukurouExtensions.instantiate(kind)?.buildDefinition(fukurou)?.let(::runIdOf) }.getOrNull()
+        }.toSet() + runIdOf(definition)
         ArtifactLayout.pruneStale(fukurou.config.outDir, keep)
     }
+
+    /** 定義の run id（JVM 内の重複で付く -2 などは含まない）。 */
+    private fun runIdOf(definition: ServerDefinition): String =
+        ResultIds.runId(definition.type.id, definition.type.minecraftVersion.id, definition.label)
 }

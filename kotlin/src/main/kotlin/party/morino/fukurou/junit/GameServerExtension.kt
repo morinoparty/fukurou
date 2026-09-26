@@ -134,15 +134,20 @@ public abstract class GameServerExtension :
         check(lease.players == declared) {
             "${javaClass.simpleName} declared players ${declared.map { it.name }} here, but ${lease.players.map { it.name }} when its server was created"
         }
-        lease.planClass(context.requiredTestClass)
+        // 計画のリスナーが無いときだけ、このクラスのテストを足す（あるならフィルタで外れたテストを足さない）
+        if (!LeaseRegistry.hasPlan(javaClass)) lease.planClass(context.requiredTestClass)
         // GameServer 引数の規則（拡張が 1 つだけのときに限る）のため、クラスに登録された拡張を残す
         registered(context).addIfAbsent(this)
+        // afterAll が取った分だけを返すよう、このクラスで使い始めたことを残す
+        context.getStore(ExtensionContext.Namespace.create(LeaseRegistry.NAMESPACE)).put(retainKey(context.requiredTestClass), true)
         LeaseRegistry.acquire(lease, this)
     }
 
     /** このクラスがサーバーを使い終わる。サーバーは動かしたままにする。 */
     final override fun afterAll(context: ExtensionContext) {
-        LeaseRegistry.lease(javaClass)?.release()
+        val store = context.getStore(ExtensionContext.Namespace.create(LeaseRegistry.NAMESPACE))
+        // beforeAll が acquire まで進まなかった（skip・宣言の不一致）なら、取っていない分を返さない
+        if (store.remove(retainKey(context.requiredTestClass)) != null) LeaseRegistry.lease(javaClass)?.release()
     }
 
     /**
@@ -266,6 +271,9 @@ public abstract class GameServerExtension :
         @Suppress("UNCHECKED_CAST")
         return context.getStore(ExtensionContext.Namespace.create(LeaseRegistry.NAMESPACE)).get(serversKey(context.requiredTestClass)) as List<GameServerExtension>?
     }
+
+    /** この拡張がテストクラスで使い始めたことを示すキー。 */
+    private fun retainKey(testClass: Class<*>): String = "fukurou.retained:${javaClass.name}:${testClass.name}"
 
     /** 引数の規則。 */
     internal companion object {

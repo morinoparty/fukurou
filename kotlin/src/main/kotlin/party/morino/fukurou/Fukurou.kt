@@ -77,6 +77,9 @@ public class Fukurou internal constructor(public val config: FukurouConfig, priv
     /** close 済みか。 */
     private val closed = AtomicBoolean(false)
 
+    /** close 済みか（JUnit の実行の終わりに閉じたかを確かめる）。 */
+    internal val isClosed: Boolean get() = closed.get()
+
     /** portablemc の実行ファイル（無ければダウンロードして展開する）。 */
     internal suspend fun portableMc(): Path = PortableMc.ensure(config.workDir.resolve("tools"), downloader)
 
