@@ -46,8 +46,8 @@ internal class MinecraftWindow(
     suspend fun pressChord(chord: Chord) {
         focus()
         // pressKey と同じく修飾キーなしのキーコードに変換し、xdotool の "+" 区切りで 1 つのコードとして送る
-        val keycodes = chord.keys.map { keycodes.unmodifiedKeycode(display, it.keysym) }
-        Xdotool.run(display, "key", "--clearmodifiers", "--delay", "100", keycodes.joinToString("+"))
+        val codes = chord.keys.map { keycodes.unmodifiedKeycode(display, it.keysym) }
+        Xdotool.run(display, "key", "--clearmodifiers", "--delay", "100", codes.joinToString("+"))
     }
 
     /** type --clearmodifiers --delay 50 -- <text>。記号の Shift 等は xdotool が自動で付与する。 */
