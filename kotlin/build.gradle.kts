@@ -44,6 +44,8 @@ dependencies {
     implementation(libs.adventure.plain)
     // result.json、Paper / GitHub の API
     implementation(libs.kotlinx.serialization.json)
+    // JUnit は suspend のテストメソッドを kotlin-reflect で呼ぶ。無いと最初の `@Test suspend fun` が失敗するので POM で持ち込む
+    runtimeOnly(libs.kotlin.reflect)
     // JUnit は利用側が持ち込む（6.0 以上）
     compileOnly(libs.junit.jupiter.api.min)
     // FukurouPlanListener
@@ -80,7 +82,6 @@ testing.suites.register<JvmTestSuite>("e2eTest") {
     useJUnitJupiter(libs.versions.junit.asProvider())
     dependencies {
         implementation(project())
-        implementation(libs.kotlin.reflect)
     }
     targets.configureEach {
         testTask.configure {
