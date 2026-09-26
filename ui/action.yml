@@ -91,7 +91,7 @@ outputs:
     description: 'Test counts across every run (test x version), as JSON, for example {"total":18,"passed":14,"failed":2,"error":0,"skipped":2}. "not run" cells are not counted.'
     value: ${{ steps.build.outputs.tests-summary }}
   failed-tests:
-    description: '"<test id>@<minecraft version>" of every cell whose status is "failed" or "error", comma separated.'
+    description: '"<test id>@<minecraft version>" (or "<test id>@<minecraft version>/<label>" for a labelled fukurou-kotlin run) of every cell whose status is "failed" or "error", comma separated.'
     value: ${{ steps.build.outputs.failed-tests }}
   site-dir:
     description: Local directory that holds the site.

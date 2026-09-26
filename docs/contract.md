@@ -2,7 +2,7 @@
 
 This is the only interface between the test runner (`fukurou`) and the viewer (`fukurou/ui`). Both live in this repository and are released together under one tag.
 
-fukurou v2 runs every selected test for one Minecraft version in one job, one process and one server session. Paper starts once, the union of all tests' players joins once, and the tests run in order. Between tests the harness resets the world and the clients. A test with `isolation: fresh-server` gets its own server session.
+A `result.json` describes one server: fukurou v2 runs every selected test for one Minecraft version in one job, one process and one server session. Paper starts once, the union of all tests' players joins once, and the tests run in order. Between tests the harness resets the world and the clients. A test with `isolation: fresh-server` gets its own server session.
 
 ## 1. Per-version output directory (one artifact per Minecraft version)
 
@@ -21,6 +21,16 @@ crash-reports/<player>/*.txt                   # only when a client crashed
 
 Never included: server jars, client jars, assets, Java runtimes, worlds.
 
+**Nested bundle.** The Kotlin library (fukurou-kotlin, see the README) can run several independent servers of one Minecraft version in one job. It writes one run directory per server, each with exactly the layout above, and uploads them together as one artifact:
+
+```
+<artifact>/<run id>/result.json                # for example fukurou-paper-26.3/paper-26.3-stamp-arena/result.json
+<artifact>/<run id>/tests/...
+<artifact>/<run id>/logs/...
+```
+
+Each run directory is a separate run for the viewer. The Python runner always writes the flat layout.
+
 `result.json` is written three times: a stub right after the tests are discovered (every test `skipped` with `skipReason: "not run"`), again after every test, and a final version at teardown (also when interrupted). A job that is killed by `timeout-minutes` or loses its runner therefore still has the results of the tests that finished.
 
 ## 2. `result.json` (schemaVersion 2)
@@ -31,8 +41,9 @@ Defined by the pydantic model `fukurou.result.model.ResultV2`. The generated JSO
 {
   "schemaVersion": 2,
   "id": "paper-1.21.11",
+  "label": null,
   "status": "failed",
-  "fukurou": { "version": "2.0.0", "portablemc": "5.0.4" },
+  "fukurou": { "version": "2.0.0", "portablemc": "5.0.4", "runner": null },
   "minecraft": { "version": "1.21.11", "server": "paper", "build": 130, "channel": "STABLE" },
   "java": { "server": 25 },
   "plugins": [
@@ -115,7 +126,9 @@ Defined by the pydantic model `fukurou.result.model.ResultV2`. The generated JSO
 
 ### Run (one Minecraft version)
 
-- `id` is `<server>-<minecraft version>`, the same as the end of the artifact name. All tests of a version share one artifact, so ids never collide.
+- `id` is `<server>-<minecraft version>[-<label>]`, the same as the end of the artifact name (or the run directory name in a nested bundle). All tests of a server share one result, so ids never collide.
+- `label` is optional. It is `null` for the Python runner. When one job writes several results for one version (fukurou-kotlin, one per server), `label` names the server (kebab case, `^[a-z0-9]+(?:-[a-z0-9]+)*$`, at most 40 characters) and `id` is `<server>-<minecraft version>-<label>`, for example `paper-26.3-stamp-arena`. Minecraft versions never contain `-` (pre-releases and snapshots are not supported), so the id splits unambiguously.
+- `fukurou` is `{ "version", "portablemc", "runner" }`. `runner` is optional: `"kotlin"` for the JVM runner, `null` for the Python runner.
 - `status`:
   - `error` when `failure` is set. `failure` is `{ "phase": "setup" | "server-start" | "client-join" | "server" | "teardown" | "interrupted", "message": "..." }`: the infrastructure kept tests from running, and the remaining tests are `skipped`. A server that dies during a session is not restarted (`phase: "server"`). `phase: "server"` also covers an unexpected exception inside the harness while tests were running; the `message` then describes that exception (a server death says `server died during <id>: ...`).
   - otherwise `failed` when any test is `failed` or `error`.
@@ -180,7 +193,7 @@ Adding fields is backwards compatible and the viewer ignores unknown fields. Rem
 
 ## 3. Site (written by `fukurou/ui`)
 
-`ui/scripts/build_manifest.py --artifacts-dir <dir> --out <site>` collects `<dir>/<artifact>/result.json` and writes:
+`ui/scripts/build_manifest.py --artifacts-dir <dir> --out <site>` collects `<dir>/<artifact>/result.json` (and `<dir>/<artifact>/<run id>/result.json` for nested bundles) and writes:
 
 ```
 index.html, assets/*                               # prebuilt viewer copied from ui/dist (relative base, hash routing)
@@ -193,6 +206,10 @@ runs/<run id>/crash-reports/...                    # only when include-logs is t
 ```
 
 When `actions/download-artifact` matches a single artifact it extracts it directly into the target directory. `build_manifest.py` detects that layout (a `result.json`, or only `tests/`, `logs/` and `crash-reports/` directories) and reads it as one run named `fukurou-<result.id>`.
+
+An artifact directory without its own `result.json` that is not that flat layout, but has one or more `<child>/result.json`, is a nested bundle (§1): every child directory becomes a run whose `artifact` is `<artifact>/<child>`. A child without `result.json` is still a run and gets the usual "result.json missing" warning. When a single nested bundle is downloaded, its run directories land directly in `<dir>` and are read as artifacts of their own.
+
+When a run has no usable `result.id`, its id comes from the end of the artifact name (for a nested child, of the child directory name): `<server>-<version>[-<label>]` where `<server>` is any lowercase type id (`fukurou-paper-1.21.9` → `paper-1.21.9`, `fukurou-paper-26.3-stamp-arena` → `paper-26.3-stamp-arena`), otherwise the sanitized artifact name.
 
 ### `manifest.json` (schemaVersion 2)
 
@@ -230,6 +247,7 @@ When `actions/download-artifact` matches a single artifact it extracts it direct
       "id": "paper-1.21.11",
       "artifact": "fukurou-paper-1.21.11",
       "base": "runs/paper-1.21.11/",
+      "label": null,
       "status": "failed",
       "result": { "...": "the whole result.json, embedded" }
     }
@@ -238,23 +256,24 @@ When `actions/download-artifact` matches a single artifact it extracts it direct
 }
 ```
 
-- `runs` are sorted by Minecraft release order (oldest first). Version strings are compared numerically part by part (`1.21.10` > `1.21.9`, `26.1` > `1.21.11`). A run's `status` is its `result.status`.
+- `runs` are sorted by Minecraft release order (oldest first), then by `label`, then by artifact name. Version strings are compared numerically part by part (`1.21.10` > `1.21.9`, `26.1` > `1.21.11`). A run's `status` is its `result.status`.
+- `label` is the supported result's `label` (`null` when it has none, when there is no supported result, or when it is not a safe name).
 - An artifact without `result.json` becomes a run with `status: "error"`, `result: null`, and a warning.
 - A run without a supported `result` (no `result.json`, or a `schemaVersion` other than 2) also gets `logs`, in the same shape as `result.logs`, when `logs/harness.log` was copied into the site: `[{ "kind": "harness", "path": "logs/harness.log", "player": null }]`. This field is optional. It is missing for runs with a supported result (they use `result.logs` / `result.sessions[].logs`) and for sites built with `--no-include-logs`.
 - A `result.json` whose `schemaVersion` is not 2 is embedded as is, but the run gets `status: "error"`, does not appear in any `cells`, and adds the warning `<artifact>: unsupported result schemaVersion 1`. There is no reader for version 1.
 - `tests` is the union of every supported run's `tests[]`, in the execution order of the run where each test first appears (runs taken oldest first). `cells` maps a run id to that test's status in the run. A run missing from `cells` is shown as "not run" (for example when a filter selected the test in only some versions). It is not counted as an error.
 - `tests[].status` is the strongest status across its cells, in the order `error` > `failed` > `passed` > `skipped`, so failures can be sorted first. `tests[].players` and `tests[].shots` are the unions for that test across runs; `shots` excludes `failure`. `tests[].tags` is the union of the test's tags.
-- `summary.runs` counts runs by status. `summary.tests` counts the cells (test × version), without "not run".
+- `summary.runs` counts runs by status. `summary.tests` counts the cells (test × run), without "not run".
 - `players` is the union of `result.players` across runs.
 - Paths inside `result` stay relative to the artifact root. The viewer resolves them against the run's `base`. Before embedding, `build_manifest.py` drops paths that are absolute, contain `..` or use backslashes from `tests[].screenshots`, `tests[].steps[].screenshot`, `tests[].logRanges` keys, `sessions[].logs` and `logs`, with a warning. It also drops tests whose `id` is not a valid test id or repeats an earlier id in the same run.
 
 ### Action outputs
 
-`build_manifest.py` writes these to `$GITHUB_OUTPUT` and a Markdown summary (runs table and test × version table) to `$GITHUB_STEP_SUMMARY`:
+`build_manifest.py` writes these to `$GITHUB_OUTPUT` and a Markdown summary (runs table and test × run table; a labelled run's column is `<version>/<label>`) to `$GITHUB_STEP_SUMMARY`:
 
 | output | value |
 | --- | --- |
 | `status` | `passed` when every run passed, `failed` otherwise, `empty` when there were no runs |
 | `summary` | `summary.runs` as compact JSON |
 | `tests-summary` | `summary.tests` as compact JSON: `{"total","passed","failed","error","skipped"}` |
-| `failed-tests` | the `failed` and `error` cells as `<test id>@<minecraft version>`, comma separated |
+| `failed-tests` | the `failed` and `error` cells as `<test id>@<minecraft version>`, or `<test id>@<minecraft version>/<label>` for a labelled run, comma separated |

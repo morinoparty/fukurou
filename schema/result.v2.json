@@ -107,6 +107,18 @@
         "portablemc": {
           "title": "Portablemc",
           "type": "string"
+        },
+        "runner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runner"
         }
       },
       "required": [
@@ -1107,6 +1119,18 @@
     "id": {
       "title": "Id",
       "type": "string"
+    },
+    "label": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Label"
     },
     "status": {
       "enum": [

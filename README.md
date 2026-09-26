@@ -262,6 +262,90 @@ uvx --from git+https://github.com/morinoparty/fukurou fukurou run \
 
 `fukurou run` writes `fukurou-out/result.json`, screenshots and logs, and keeps the server, clients and caches in `.fukurou-work/`. It exits with 0 when every selected test passed or was skipped, 1 when any test failed, errored, or the run could not proceed, and 2 for invalid input (including an empty selection). Run `fukurou --help` for every command and option.
 
+## Kotlin / JUnit (JVM)
+
+fukurou also ships a Kotlin library that drives the same servers, clients and results from JUnit tests instead of YAML/JSON scenarios. It lives in [`kotlin/`](kotlin) and is published through JitPack:
+
+```kotlin
+// build.gradle.kts
+repositories { maven("https://jitpack.io") }
+dependencies { testImplementation("com.github.morinoparty:fukurou:v2.2.0") }
+```
+
+Use an exact tag (JitPack caches the first build of a tag forever). The library targets Java 21 bytecode, needs JUnit 6 on the test classpath, and its API is `suspend` (JUnit 6 runs `suspend` test methods itself through `kotlin-reflect`, which fukurou brings in as a runtime dependency).
+
+Register an extension with `@ExtendWith(StampArena::class)` or a static field (`companion object { @JvmField @RegisterExtension val arena = StampArena() }`). A `@RegisterExtension` property in the class body is an instance field, and JUnit never calls `beforeAll` for it, so its server never starts.
+
+Add `src/<suite>/resources/junit-platform.properties` so a test that hangs outside fukurou's own waits is still stopped:
+
+```properties
+junit.jupiter.testclass.order.default=party.morino.fukurou.junit.platform.FukurouClassOrderer
+junit.jupiter.execution.parallel.enabled=false
+junit.jupiter.execution.timeout.testable.method.default=15 m
+```
+
+One `GameServerExtension` subclass is one independent server and one `result.json`. Every test class that registers it with `@ExtendWith` shares that server:
+
+```kotlin
+class StampArena : GameServerExtension() {
+    val alice by player("Alice", op = true)
+    val bob by player("Bob")
+
+    // CI passes -Pfukurou.minecraftVersion; the default is used locally
+    override fun type(config: FukurouConfig): ServerType =
+        Paper.fromProperties(config, defaultVersion = "26.3", defaultChannel = PaperChannel.Alpha)
+
+    override fun ServerSpec.configure() {
+        label = "stamp-arena" // the result id becomes paper-26.3-stamp-arena
+        plugins { underTest(PluginSource.systemProperty("minestamp")) } // -Pfukurou.plugin.minestamp=<jar>
+        isolation = Isolation.Reset(settle = 5.seconds)
+    }
+}
+
+@ExtendWith(StampArena::class)
+class StampTest {
+    @Test
+    suspend fun `stamp-thinking-face`(arena: StampArena) {
+        arena.alice.sendCommand("st :thinking-face:")
+        arena.bob.screenshot("after-stamp")
+    }
+}
+```
+
+Players and servers implement Kyori Adventure's `Audience`, so `player.showTitle(...)` or `server.sendMessage(...)` work as in a plugin. The library can also be used without JUnit (`Fukurou.fromSystemProperties().use { ... }`).
+
+**Configuration.** Everything is read from `fukurou.*` system properties (forward them from Gradle `-Pfukurou.*` to the test JVM as `-D`):
+
+| Property | Default | Meaning |
+| --- | --- | --- |
+| `fukurou.acceptEula` (`FUKUROU_ACCEPT_EULA`) | `false` | Must be `true`. Running means accepting the Minecraft EULA. |
+| `fukurou.minecraftVersion` | the extension's default | Exact Minecraft version (read by `Paper.fromProperties`). |
+| `fukurou.paperChannel` | the extension's default | Least stable accepted Paper channel: `stable` / `beta` / `alpha`. |
+| `fukurou.paperBuild` | newest | Pin a Paper build. |
+| `fukurou.plugin.<key>` | — | Path of a plugin jar, read by `PluginSource.systemProperty("<key>")`. |
+| `fukurou.outDir` (`FUKUROU_OUT_DIR`) | `fukurou-out` | One `<run id>/` directory (the results contract layout) per server. |
+| `fukurou.workDir` (`FUKUROU_WORK_DIR`) | `.fukurou-work` | Tools, caches, server and client directories. |
+| `fukurou.memoryBudgetMb` | 0.9 × available memory | Budget for servers that are alive at the same time. |
+| `fukurou.selection.tests` / `fukurou.selection.tags` | — | Recorded in `result.selection` (filter with Gradle `--tests` / JUnit tags). |
+| `fukurou.missingHost` | `fail` | `skip` aborts the tests instead of failing when Xvfb, xdotool or xmodmap is missing. |
+| `fukurou.keepWork` | `false` | Keep the server directories after the run for debugging. |
+
+**CI.** The [`morinoparty/fukurou/setup`](setup/action.yml) action installs the system packages (the same list as the Python action, plus `x11-xserver-utils` for `xmodmap`), sets `FUKUROU_WORK_DIR` and restores the tool and asset cache:
+
+```yaml
+- uses: morinoparty/fukurou/setup@v2
+  with:
+    minecraft-version: ${{ matrix.minecraft-version }}
+- run: ./gradlew gameTest -Pfukurou.acceptEula=true -Pfukurou.minecraftVersion=${{ matrix.minecraft-version }} -Pfukurou.outDir=${{ runner.temp }}/fukurou-out
+- uses: actions/upload-artifact@v7
+  if: always()
+  with:
+    name: fukurou-paper-${{ matrix.minecraft-version }}
+    path: ${{ runner.temp }}/fukurou-out
+```
+
+The uploaded artifact is a nested bundle with one run directory per server (`fukurou-paper-26.3/paper-26.3-stamp-arena/result.json`). `morinoparty/fukurou/ui` reads it like the Python runner's artifacts and shows each server as its own run, labelled `26.3 · stamp-arena` (see [contract.md](docs/contract.md)).
+
 ## Requirements
 
 - **Linux x86_64.** The runner uses Xvfb, `xdotool` and the Linux build of PortableMC. On GitHub Actions, `ubuntu-24.04` works; the action installs the system packages with `apt-get`.
@@ -281,7 +365,7 @@ The format of `result.json` and of the viewer's `manifest.json` is described in 
 - Screenshots are saved, not compared. Particles, lighting and animations are not pixel-deterministic.
 - Input is keyboard only (key presses and typed text). There is no mouse input, and no way to read the screen other than logs and screenshots.
 - Clients are rendered in software by Mesa. They are slow, so a suite with several players and tests needs a few minutes per version.
-- Only Paper servers are supported.
+- Only Paper servers are supported (both runners).
 - The arena reset assumes a flat world (`y = -64..-61`). If you bring your own world with `server-files`, set `arena: false` in the suite.
 
 ## License

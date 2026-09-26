@@ -38,6 +38,22 @@ class SafePathTest(unittest.TestCase):
             self.assertFalse(build_manifest.is_safe_relative_path(bad), bad)
 
 
+class ArtifactNameTest(unittest.TestCase):
+    def test_trailing_run_id_and_version(self):
+        # <prefix>-<server>-<version>[-<label>]。サーバーの種類は paper 以外も読み、入れ子の子は "/" の後ろを見る
+        table = [
+            ("fukurou-paper-1.21.9", "paper-1.21.9", "1.21.9"),
+            ("fukurou-paper-26.3-stamp-arena", "paper-26.3-stamp-arena", "26.3"),
+            ("paper-26.3-a-b", "paper-26.3-a-b", "26.3"),
+            ("fukurou-velocity-26.3-proxy", "velocity-26.3-proxy", "26.3"),
+            ("fukurou-paper-kotlin-26.3/paper-26.3-smoke-arena", "paper-26.3-smoke-arena", "26.3"),
+        ]
+        for name, run_id, version in table:
+            with self.subTest(name=name):
+                self.assertEqual(build_manifest.run_id_for(None, name, set(), []), run_id)
+                self.assertEqual(build_manifest.version_from_artifact_name(name), version)
+
+
 class BuildSiteTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -203,6 +219,69 @@ class BuildSiteTest(unittest.TestCase):
         self.assertIsNotNone(run["result"])
         self.assertEqual(manifest["warnings"], [])
         self.assertTrue((self.out / "runs/paper-1.21.10/tests/stamp-legacy-format/screenshots/Alice/legacy-stamp.png").is_file())
+
+    def write_labelled_run(self, directory, version, label):
+        # fukurou-kotlin の run ディレクトリ（id は <server>-<version>-<label>、label 付き）を fixture から作る
+        shutil.copytree(FIXTURES / f"fukurou-paper-{version}", directory)
+        result = json.loads((directory / "result.json").read_text())
+        result["id"] = f"paper-{version}-{label}"
+        result["label"] = label
+        result["fukurou"]["runner"] = "kotlin"
+        (directory / "result.json").write_text(json.dumps(result))
+
+    def test_nested_bundles(self):
+        # 1 バージョン 1 artifact の中に、サーバーごとの run ディレクトリ（ここでは 1 つ）が入る
+        self.artifacts = self.tmp / "nested"
+        for version in ("1.21.11", "1.21.10"):
+            self.write_labelled_run(self.artifacts / f"fukurou-paper-{version}" / f"paper-{version}-stamp-arena",
+                                    version, "stamp-arena")
+        output_file = self.tmp / "output.txt"
+        manifest = self.build(env={"GITHUB_OUTPUT": str(output_file)})
+        runs = manifest["runs"]
+        self.assertEqual([r["id"] for r in runs], ["paper-1.21.10-stamp-arena", "paper-1.21.11-stamp-arena"])
+        self.assertEqual(runs[0]["artifact"], "fukurou-paper-1.21.10/paper-1.21.10-stamp-arena")
+        self.assertEqual([r["label"] for r in runs], ["stamp-arena", "stamp-arena"])
+        self.assertEqual(manifest["summary"]["tests"]["total"], 8)
+        self.assertEqual(manifest["warnings"], [])
+        self.assertTrue(
+            (self.out / "runs/paper-1.21.10-stamp-arena/tests/stamp-thinking-face/screenshots/Bob/after-stamp.png").is_file()
+        )
+        # ラベル付きの run は failed-tests と格子の列見出しを <version>/<label> にする
+        self.assertIn(
+            "failed-tests=stamp-sleeping-face@1.21.11/stamp-arena,stamp-reload@1.21.11/stamp-arena\n",
+            output_file.read_text(),
+        )
+        self.assertIn("| Test | 1.21.10/stamp-arena | 1.21.11/stamp-arena |", build_manifest.markdown_summary(manifest))
+
+    def test_flattened_nested_bundle(self):
+        # 入れ子の束が 1 件だけだと、download-artifact は run ディレクトリを直下に展開する
+        self.artifacts = self.tmp / "flattened"
+        self.write_labelled_run(self.artifacts / "paper-1.21.10-zeta", "1.21.10", "zeta")
+        self.write_labelled_run(self.artifacts / "paper-1.21.10-alpha", "1.21.10", "alpha")
+        manifest = self.build()
+        # 同じバージョンの run はラベル順に並ぶ
+        self.assertEqual(
+            [(r["id"], r["artifact"], r["label"]) for r in manifest["runs"]],
+            [("paper-1.21.10-alpha", "paper-1.21.10-alpha", "alpha"), ("paper-1.21.10-zeta", "paper-1.21.10-zeta", "zeta")],
+        )
+        self.assertEqual(manifest["summary"]["runs"]["total"], 2)
+
+    def test_nested_child_without_result(self):
+        # 子の 1 つに result.json が無くても run として残し、id とバージョンは子の名前から推測する
+        self.artifacts = self.tmp / "nested"
+        bundle = self.artifacts / "fukurou-paper-1.21.10"
+        self.write_labelled_run(bundle / "paper-1.21.10-stamp-arena", "1.21.10", "stamp-arena")
+        (bundle / "paper-1.21.10-broken" / "logs").mkdir(parents=True)
+        (bundle / "paper-1.21.10-broken" / "logs" / "harness.log").write_text("boom\n")
+        manifest = self.build()
+        runs = {r["id"]: r for r in manifest["runs"]}
+        self.assertEqual(set(runs), {"paper-1.21.10-stamp-arena", "paper-1.21.10-broken"})
+        broken = runs["paper-1.21.10-broken"]
+        self.assertEqual((broken["status"], broken["result"], broken["label"]), ("error", None, None))
+        self.assertEqual(broken["logs"], [{"kind": "harness", "path": "logs/harness.log", "player": None}])
+        self.assertEqual(
+            manifest["warnings"], ["fukurou-paper-1.21.10/paper-1.21.10-broken: result.json missing (job cancelled?)"]
+        )
 
     def test_single_artifact_without_result(self):
         # result.json が無くても、直下が契約のディレクトリ（tests/ logs/）だけなら平置きの 1 件とみなす

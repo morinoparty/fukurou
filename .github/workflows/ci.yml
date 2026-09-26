@@ -83,6 +83,171 @@ jobs:
           git add -N -- ui/dist
           git diff --exit-code -- ui/dist
 
+  kotlin:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # JitPack と同じ Java 21 でビルドする（ライブラリは toolchain を使わず Java 21 のバイトコードを出す）
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@8379f6a1328ee0e06e2bb424dadb7b159856a326 # v4.4.0
+
+      - name: Build and test the Kotlin library
+        # リポジトリ直下は Python のプロジェクトなので、Gradle の wrapper は kotlin/ にある。
+        # 単体テストだけを実行する（Minecraft を起動する e2eTest は check に含まれない）
+        working-directory: kotlin
+        run: ./gradlew check
+
+      - name: Upload the golden result files
+        # ResultSchemaTest が書く result.json の見本。pydantic のモデルとの突き合わせに使う
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: kotlin-contract
+          path: kotlin/build/contract/*.json
+          if-no-files-found: ignore
+
+  kotlin-contract:
+    # Kotlin の ResultSchemaTest が書いた result.json の見本を、Python 版の pydantic モデルで読み直す（§8.4）。
+    # 検証に通るだけでなく、モデルが書き出すキーを Kotlin 側が 1 つも落としていないことも確かめる
+    needs: kotlin
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: kotlin-contract
+          path: contract
+
+      - name: Validate the Kotlin golden files with the pydantic models
+        run: |
+          uv run --frozen python - contract <<'PY'
+          import json, pathlib, sys
+          from fukurou.result.model import ResultV2
+
+          def diff(expected, actual, path="$"):
+              # dict と list を再帰でたどり、モデルが書き出すキーの集合と見本のキーの集合の差を集める
+              problems = []
+              if isinstance(expected, dict) and isinstance(actual, dict):
+                  if set(expected) != set(actual):
+                      missing = sorted(set(expected) - set(actual))
+                      extra = sorted(set(actual) - set(expected))
+                      problems.append(f"{path}: missing={missing} extra={extra}")
+                  for key in set(expected) & set(actual):
+                      problems += diff(expected[key], actual[key], f"{path}.{key}")
+              elif isinstance(expected, list) and isinstance(actual, list):
+                  for index, (e, a) in enumerate(zip(expected, actual)):
+                      problems += diff(e, a, f"{path}[{index}]")
+              return problems
+
+          files = sorted(pathlib.Path(sys.argv[1]).glob("*.json"))
+          # 見本が 1 つも無いのは kotlin ジョブの異常なので、黙って通さない
+          assert files, "no golden files were downloaded"
+          failed = False
+          for file in files:
+              text = file.read_text()
+              model = ResultV2.model_validate_json(text)
+              problems = diff(model.model_dump(mode="json", by_alias=True), json.loads(text))
+              print(f"{file.name}: {'ok' if not problems else 'key mismatch'}")
+              for problem in problems:
+                  print(f"  {problem}")
+              failed |= bool(problems)
+          sys.exit(1 if failed else 0)
+          PY
+
+  kotlin-e2e:
+    # 本物の Paper と Minecraft クライアントで Kotlin 版の e2eTest（SmokeTest と、2 台同時の MultiServerTest）を実行する（§8.4）
+    name: Kotlin e2e (Minecraft ${{ fromJSON(needs.versions.outputs.smoke)[0] }})
+    needs: versions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      # 最新の stable（versions ジョブが Mojang と Paper の API から解決したもの）
+      MINECRAFT_VERSION: ${{ fromJSON(needs.versions.outputs.smoke)[0] }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Xvfb・xdotool・ソフトウェア描画の apt パッケージと、ツール・アセットのキャッシュ。
+      # FUKUROU_WORK_DIR と LIBGL_ALWAYS_SOFTWARE を GITHUB_ENV に入れ、Gradle のテスト JVM がそれを引き継ぐ
+      - uses: ./setup
+        id: setup
+        with:
+          minecraft-version: ${{ env.MINECRAFT_VERSION }}
+
+      # サーバーは既定でテストを動かす JVM の java で起動するので、新しい Minecraft が求める Java 25 にする
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@8379f6a1328ee0e06e2bb424dadb7b159856a326 # v4.4.0
+
+      - name: Run the Kotlin e2e tests
+        working-directory: kotlin
+        # -Pfukurou.* は build.gradle.kts がすべて -D としてテストの JVM に渡す
+        run: |
+          ./gradlew e2eTest \
+            -Pfukurou.acceptEula=true \
+            -Pfukurou.minecraftVersion="$MINECRAFT_VERSION" \
+            -Pfukurou.outDir="$RUNNER_TEMP/kotlin-out" \
+            -Pfukurou.missingHost=fail
+
+      - name: Check result.json
+        # SmokeTest（smoke、2 件）と MultiServerTest（lobby と duel、各 1 件）の result.json が揃い、
+        # すべて passed で記録されていること（result.json は JVM の終了時に書かれる）
+        run: |
+          python3 - "$RUNNER_TEMP/kotlin-out" <<'PY'
+          import json, pathlib, sys
+          # label → 期待するテストの件数
+          expected = {"smoke": 2, "lobby": 1, "duel": 1}
+          results = sorted(pathlib.Path(sys.argv[1]).glob("*/result.json"))
+          assert len(results) == len(expected), results
+          seen = {}
+          for path in results:
+              result = json.loads(path.read_text())
+              print(path, result["label"], result["status"], result["summary"])
+              label = result["label"]
+              assert label in expected and label not in seen, (label, sorted(seen))
+              seen[label] = result["id"]
+              total = expected[label]
+              assert result["id"].endswith("-" + label), result["id"]
+              assert path.parent.name == result["id"], (path, result["id"])
+              assert result["fukurou"]["runner"] == "kotlin", result["fukurou"]
+              assert result["status"] == "passed", (label, result["status"], result.get("failure"))
+              assert result["summary"]["total"] == total, (label, result["summary"])
+              assert result["summary"]["passed"] == total, (label, result["summary"])
+              assert len(result["tests"]) == total, (label, [t["id"] for t in result["tests"]])
+              assert all(test["status"] == "passed" for test in result["tests"]), (label, [t["status"] for t in result["tests"]])
+          # 3 つの result はそれぞれ別の run（id が重ならない）
+          assert set(seen) == set(expected), seen
+          assert len(set(seen.values())) == len(expected), seen
+          PY
+
+      - name: Upload the Kotlin e2e output
+        # fukurou-paper-* の名前にすると ui-smoke の download（Python 版の smoke の run 数を数える）に混ざるので、別の名前にする
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fukurou-kotlin-e2e-${{ env.MINECRAFT_VERSION }}
+          path: |
+            ${{ runner.temp }}/kotlin-out
+            kotlin/build/test-results/e2eTest
+            kotlin/build/reports/tests/e2eTest
+          if-no-files-found: warn
+
   versions:
     runs-on: ubuntu-24.04
     outputs:
