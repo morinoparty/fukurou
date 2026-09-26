@@ -209,7 +209,8 @@ internal class ServerInstance private constructor(
         source = "the server log ($resultId)",
         artifactPath = { ArtifactLayout.sessionServerLog(sessionIndex) },
         liveness = ::checkLiveness,
-        deadline = { ActiveTests.on(this)?.deadline },
+        // tearDown など記録しないスコープではテストの期限を使わない
+        deadline = { StepRunner.deadlineOf(this) },
     )
 
     /** クライアントの接続先。 */
@@ -893,6 +894,9 @@ internal class ServerInstance private constructor(
             }
             val layout = ArtifactLayout(fukurou.config.outDir, runId)
             layout.prepare()
+            // run id は実行ごとに同じなので、前の JVM（keepWork や強制終了）が残したクラッシュレポートやログを
+            // この run のものとして回収しないよう、作業ディレクトリも最初に空にする（suite_run.py:483 _reset_work_dir）
+            SessionDirs(fukurou.config.workDir, runId).delete()
             val harness = HarnessLog(layout.harnessLogFile)
             if (runId != candidate) harness.warn("result id $candidate is already used in this JVM; writing $runId")
             val recorder = RunRecorder(
