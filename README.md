@@ -272,7 +272,17 @@ repositories { maven("https://jitpack.io") }
 dependencies { testImplementation("com.github.morinoparty:fukurou:v2.2.0") }
 ```
 
-Use an exact tag (JitPack caches the first build of a tag forever). The library targets Java 21 bytecode, needs JUnit 6 on the test classpath, and its API is `suspend` (JUnit 6 runs `suspend` test methods itself).
+Use an exact tag (JitPack caches the first build of a tag forever). The library targets Java 21 bytecode, needs JUnit 6 on the test classpath, and its API is `suspend` (JUnit 6 runs `suspend` test methods itself through `kotlin-reflect`, which fukurou brings in as a runtime dependency).
+
+Register an extension with `@ExtendWith(StampArena::class)` or a static field (`companion object { @JvmField @RegisterExtension val arena = StampArena() }`). A `@RegisterExtension` property in the class body is an instance field, and JUnit never calls `beforeAll` for it, so its server never starts.
+
+Add `src/<suite>/resources/junit-platform.properties` so a test that hangs outside fukurou's own waits is still stopped:
+
+```properties
+junit.jupiter.testclass.order.default=party.morino.fukurou.junit.platform.FukurouClassOrderer
+junit.jupiter.execution.parallel.enabled=false
+junit.jupiter.execution.timeout.testable.method.default=15 m
+```
 
 One `GameServerExtension` subclass is one independent server and one `result.json`. Every test class that registers it with `@ExtendWith` shares that server:
 
