@@ -48,10 +48,16 @@ LIST_FIELDS = ("plugins", "players", "sessions", "tests", "logs")
 TEST_LIST_FIELDS = ("tags", "players", "steps", "screenshots")
 # sessions[] の各要素の中でリストであるべきフィールド
 SESSION_LIST_FIELDS = ("players", "tests", "logs")
-# artifact 名の末尾からバージョンを拾う（例: fukurou-paper-1.21.9 → 1.21.9）
+# artifact 名の末尾 <server>-<version>[-<label>] からバージョンを拾う（例: fukurou-paper-26.3-stamp-arena → 26.3）。
+# サーバーの種類は paper に限らない。re.search は左から最初の一致を採るので、区切り (^|-|/) を付けて
+# ラベル側の数字をバージョンと取り違えないようにする。/ は入れ子の artifact（<artifact>/<run id>）の区切り
+TRAILING_SERVER_VERSION = re.compile(r"(?:^|[-/])[a-z][a-z0-9]*-(\d+(?:\.\d+)+)(?:-[A-Za-z0-9._-]+)?$")
+# 上に一致しない名前向けの従来の規則（例: 末尾がバージョンだけの名前、1.21.11-pre1 のような接尾辞）
 TRAILING_VERSION = re.compile(r"(\d+(?:\.\d+)+(?:-[A-Za-z0-9.]+)?)$")
-# artifact 名（<prefix>-<server>-<version>）の末尾から result.id と同じ形の id を拾う（例: fukurou-paper-1.21.9 → paper-1.21.9）
-TRAILING_RUN_ID = re.compile(r"(?:^|-)(paper-\d+(?:\.\d+)+(?:-[A-Za-z0-9.]+)?)$")
+# artifact 名（<prefix>-<server>-<version>[-<label>]）の末尾から result.id と同じ形の id を拾う
+# （例: fukurou-paper-1.21.9 → paper-1.21.9、fukurou-paper-26.3-stamp-arena → paper-26.3-stamp-arena）。
+# バージョンは "-" を含まない（プレリリース・スナップショットは非対応）ので、ラベルとの境目は一意に決まる
+TRAILING_RUN_ID = re.compile(r"(?:^|[-/])([a-z][a-z0-9]*-\d+(?:\.\d+)+(?:-[A-Za-z0-9._-]+)?)$")
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -104,7 +110,8 @@ def is_safe_relative_path(path: Any) -> bool:
 
 def version_from_artifact_name(name: str) -> str | None:
     """result.json が無いときに、並び替え用のバージョンを artifact 名から推測する。"""
-    match = TRAILING_VERSION.search(name)
+    # <server>-<version>[-<label>] の形を優先し、読めなければ末尾のバージョンだけを見る
+    match = TRAILING_SERVER_VERSION.search(name) or TRAILING_VERSION.search(name)
     return match.group(1) if match else None
 
 
@@ -289,6 +296,20 @@ def fallback_logs(run_dir: Path) -> list[dict]:
     return []
 
 
+def result_label(result: dict | None, artifact: str, warnings: list[str]) -> str | None:
+    """読める result の label（fukurou-kotlin がサーバーごとに付ける名前）を返す。無ければ None。
+
+    表の見出しや failed-tests の出力に使うので、run の id と同じ安全な文字だけを受け付ける。
+    """
+    label = result.get("label") if is_supported(result) else None
+    if label is None:
+        return None
+    if not (isinstance(label, str) and SAFE_ID.match(label)):
+        warnings.append(f"{artifact}: result label {label!r} is not usable; ignored")
+        return None
+    return label
+
+
 def build_run(
     artifact_dir: Path,
     artifact: str,
@@ -322,6 +343,7 @@ def build_run(
         "id": run_id,
         "artifact": artifact,
         "base": f"runs/{run_id}/",
+        "label": result_label(result, artifact, warnings),
         "status": status,
         "result": result,
     }
@@ -347,7 +369,14 @@ def build_run_safely(
     except Exception as e:  # noqa: BLE001 - 1件の壊れた artifact で全 run の表示を失わないため
         warnings.append(f"{artifact}: could not process the artifact ({type(e).__name__}: {e})")
         run_id = run_id_for(None, artifact, used_ids, warnings)
-        return {"id": run_id, "artifact": artifact, "base": f"runs/{run_id}/", "status": "error", "result": None}
+        return {
+            "id": run_id,
+            "artifact": artifact,
+            "base": f"runs/{run_id}/",
+            "label": None,
+            "status": "error",
+            "result": None,
+        }
 
 
 def run_tests(run: dict) -> list[dict]:
@@ -379,7 +408,7 @@ def append_unique(values: list[str], value: Any, exclude: set[str] = frozenset()
 
 
 def build_test_matrix(runs: list[dict]) -> list[dict]:
-    """テスト × バージョンの格子を作る。
+    """テスト × run の格子を作る。
 
     行は全 run の tests[] の和集合で、runs（古いバージョン順）の中で最初に現れた run の実行順に並べる。
     cells に無い run は「not run」で、error には数えない。
@@ -413,7 +442,7 @@ def build_test_matrix(runs: list[dict]) -> list[dict]:
 
 
 def summarize_tests(tests: list[dict]) -> dict:
-    """テスト × バージョンのセルのステータスごとの件数（not run は数えない）。"""
+    """テスト × run のセルのステータスごとの件数（not run は数えない）。"""
     summary = {"total": 0, "passed": 0, "failed": 0, "error": 0, "skipped": 0}
     for test in tests:
         for status in test["cells"].values():
@@ -422,13 +451,20 @@ def summarize_tests(tests: list[dict]) -> dict:
     return summary
 
 
+def run_column(run: dict) -> str:
+    """表の列見出しや failed-tests で run を指す短い名前。"<version>"、ラベル付きの run は "<version>/<label>"。"""
+    version = run_version(run) or run["id"]
+    # 同じバージョンの run が複数あっても区別できるよう、ラベルがあれば添える（Python 版の出力は従来どおり）
+    return f"{version}/{run['label']}" if run.get("label") else version
+
+
 def failed_tests(manifest: dict) -> list[str]:
-    """failed / error のセルを "<test id>@<version>" で返す（テストの順、その中は古いバージョン順）。"""
-    versions = {run["id"]: run_version(run) or run["id"] for run in manifest["runs"]}
+    """failed / error のセルを "<test id>@<version>[/<label>]" で返す（テストの順、その中は run の並び順）。"""
+    columns = {run["id"]: run_column(run) for run in manifest["runs"]}
     return [
-        f"{test['id']}@{versions[run_id]}"
+        f"{test['id']}@{columns[run_id]}"
         for test in manifest["tests"]
-        for run_id in versions
+        for run_id in columns
         if test["cells"].get(run_id) in ("failed", "error")
     ]
 
@@ -462,8 +498,24 @@ def single_artifact_name(artifacts_dir: Path) -> str:
     return artifacts_dir.resolve().name or "fukurou"
 
 
+def nested_run_dirs(artifact_dir: Path) -> list[Path]:
+    """artifact が入れ子の束（<artifact>/<run id>/result.json）なら、その run ディレクトリを返す。
+
+    fukurou-kotlin は同じバージョンの複数のサーバーを 1 つの artifact にまとめてアップロードする。
+    自身の result.json がある、または直下が契約のディレクトリだけ（キャンセルされた平らな run）なら入れ子ではない。
+    子のどれか 1 つにでも result.json があれば入れ子とみなし、result.json の無い子も run として返す
+    （いつもどおり "result.json missing" の警告を出すため）。
+    """
+    if is_single_artifact_layout(artifact_dir):
+        return []
+    children = sorted(
+        p for p in artifact_dir.iterdir() if p.is_dir() and not p.is_symlink() and p.name not in CONTRACT_DIRS
+    )
+    return children if any((child / "result.json").is_file() for child in children) else []
+
+
 def discover_artifacts(artifacts_dir: Path, excluded: set[str], out: Path) -> list[tuple[Path, str]]:
-    """run として読む (ディレクトリ, artifact 名) の一覧を返す。"""
+    """run として読む (ディレクトリ, artifact 名) の一覧を返す。入れ子の束は子ごとに "<artifact>/<子>" の名前で返す。"""
     if is_single_artifact_layout(artifacts_dir):
         return [(artifacts_dir, single_artifact_name(artifacts_dir))]
     out_resolved = out.resolve()
@@ -472,7 +524,11 @@ def discover_artifacts(artifacts_dir: Path, excluded: set[str], out: Path) -> li
         # サイト自体の artifact や出力先ディレクトリは run として扱わない
         if artifact_dir.name in excluded or artifact_dir.resolve() == out_resolved:
             continue
-        found.append((artifact_dir, artifact_dir.name))
+        children = nested_run_dirs(artifact_dir)
+        if children:
+            found.extend((child, f"{artifact_dir.name}/{child.name}") for child in children)
+        else:
+            found.append((artifact_dir, artifact_dir.name))
     return found
 
 
@@ -541,13 +597,13 @@ def escape_cell(text: str) -> str:
 
 
 def markdown_summary(manifest: dict) -> str:
-    """GITHUB_STEP_SUMMARY と標準出力に出す、run 一覧とテスト × バージョンの表。"""
+    """GITHUB_STEP_SUMMARY と標準出力に出す、run 一覧とテスト × run の表。"""
     runs_summary = manifest["summary"]["runs"]
     tests_summary = manifest["summary"]["tests"]
     lines = [
         f"### fukurou: {manifest['title']}",
         "",
-        f"{len(manifest['tests'])} tests × {runs_summary['total']} versions: "
+        f"{len(manifest['tests'])} tests × {runs_summary['total']} runs: "
         f"{tests_summary['passed']} passed, {tests_summary['failed']} failed, "
         f"{tests_summary['error']} error, {tests_summary['skipped']} skipped",
         "",
@@ -575,10 +631,10 @@ def markdown_summary(manifest: dict) -> str:
             f"| {escape_cell(message)} |"
         )
     if manifest["tests"]:
-        # テスト × バージョンの格子。cells に無い run は not run
+        # テスト × run の格子。cells に無い run は not run。ラベル付きの run の列は <version>/<label>
         lines += [
             "",
-            "| Test | " + " | ".join(run_version(run) or run["id"] for run in manifest["runs"]) + " |",
+            "| Test | " + " | ".join(escape_cell(run_column(run)) for run in manifest["runs"]) + " |",
             "| --- |" + " --- |" * len(manifest["runs"]),
         ]
         for test in manifest["tests"]:
@@ -665,8 +721,8 @@ def build_site(args: argparse.Namespace, env: dict[str, str]) -> dict:
     if not runs:
         warnings.append(f"no artifacts found in {artifacts_dir}")
 
-    # 古いバージョンから順に並べる。同じバージョンは artifact 名で安定させる
-    runs.sort(key=lambda run: (version_sort_key(run_version(run)), run["artifact"]))
+    # 古いバージョンから順に並べる。同じバージョンはラベル、artifact 名の順で安定させる
+    runs.sort(key=lambda run: (version_sort_key(run_version(run)), run["label"] or "", run["artifact"]))
     tests = build_test_matrix(runs)
     manifest = {
         "schemaVersion": MANIFEST_SCHEMA_VERSION,

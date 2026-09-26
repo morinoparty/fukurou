@@ -346,7 +346,7 @@ deploy:
 | `status` | `passed` when every run passed, `failed` when any run failed or errored, `empty` when no runs were found. |
 | `summary` | Run counts as JSON, for example `{"total":7,"passed":6,"failed":1,"error":0}`. |
 | `tests-summary` | Test counts across every run (test x version) as JSON, for example `{"total":18,"passed":14,"failed":2,"error":0,"skipped":2}`. A "not run" cell (a test absent from a run, for example because a filter excluded it there) is not counted. |
-| `failed-tests` | `<test id>@<minecraft version>` of every cell whose status is `failed` or `error`, comma separated. |
+| `failed-tests` | `<test id>@<minecraft version>` (or `<test id>@<minecraft version>/<label>` for a labelled fukurou-kotlin run) of every cell whose status is `failed` or `error`, comma separated. |
 | `site-dir` | Local directory that holds the site. |
 
 ## Command line
