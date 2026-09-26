@@ -4,6 +4,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -59,6 +60,8 @@ internal class ParallelRunner(private val grace: Duration = GRACE) : ParallelSco
         val host = run?.host
         // レーンは呼び出し元ではなくサーバーのスコープで起動する（置き去りにできるように）
         val harness = host?.harnessScope ?: CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        // 停止したサーバーのスコープではレーンが起動せず、何もせずに終わってしまう
+        check(harness.isActive) { "${host?.resultId ?: "the server"} was stopped; parallel lanes cannot start" }
         val base = outer ?: StepScope(run)
         // レーンの中の例外（時刻つき）。レーンの外へは run() の最後に 1 つだけ投げる
         val failures = ConcurrentLinkedQueue<Pair<Long, Throwable>>()
@@ -69,8 +72,9 @@ internal class ParallelRunner(private val grace: Duration = GRACE) : ParallelSco
                 try {
                     body()
                 } catch (cancelled: CancellationException) {
-                    // 打ち切られた。記録は StepRunner が済ませているので、ここでは何もしない
-                    throw cancelled
+                    // レーン自身が打ち切られたなら記録は StepRunner が済ませている。レーンが生きたままの取り消し
+                    // （利用者の withTimeout など）はレーンの失敗として呼び出し元へ返す
+                    if (isActive) failures += System.nanoTime() to cancelled else throw cancelled
                 } catch (error: Throwable) {
                     failures += System.nanoTime() to error
                     // サーバーが死んだら他のレーンの待ちは無駄なので打ち切る（parallel.py:117）

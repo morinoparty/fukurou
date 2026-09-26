@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -644,13 +645,18 @@ internal class ServerInstance private constructor(
     suspend fun finishTest(run: TestRun, error: Throwable?): TestOutcome = withContext(NonCancellable) {
         try {
             val died = deadClient()
-            val outcome = StatusMapper.outcome(
-                error = error,
-                failingStep = run.stepOf(error),
-                leasePhase = run.phase,
-                clientDead = died != null,
-                resetError = run.resetError,
-            )
+            val outcome = if (error is CancellationException && error !is TimeoutCancellationException) {
+                // 取り消された（中断された）テストは走り切れなかったので、契約どおり skipped にする（suite_run.py:352）
+                TestOutcome(TestStatus.SKIPPED, skipReason = SKIP_INTERRUPTED)
+            } else {
+                StatusMapper.outcome(
+                    error = error,
+                    failingStep = run.stepOf(error),
+                    leasePhase = run.phase,
+                    clientDead = died != null,
+                    resetError = run.resetError,
+                )
+            }
             if (outcome.status == TestStatus.FAILED || outcome.status == TestStatus.ERROR) {
                 harness.error("test ${run.testId} ${outcome.status.name.lowercase()}: ${outcome.message}")
                 FailureCapture.capture(this@ServerInstance, run, outcome.provisionalStepId ?: run.firstFailedStep?.provisionalId)
