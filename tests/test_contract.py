@@ -83,6 +83,21 @@ def test_json_schema_uses_camel_case():
     assert {"type": "array", "items": {"$ref": "#/$defs/RepeatInfo"}, "minItems": 1} in repeat
 
 
+def test_kotlin_runner_fields_are_optional():
+    # fukurou-kotlin が書く label / fukurou.runner は追加の任意フィールドで、Python 版の出力では null になる
+    base = json.loads(FIXTURE_RESULTS[0].read_text(encoding="utf-8"))
+    python_result = ResultV2.model_validate(base)
+    assert python_result.label is None and python_result.fukurou.runner is None
+    dumped = json.loads(python_result.model_dump_json())
+    assert dumped["label"] is None and dumped["fukurou"]["runner"] is None
+
+    labelled = {**base, "id": "paper-26.3-stamp-arena", "label": "stamp-arena",
+                "fukurou": {**base["fukurou"], "runner": "kotlin"}}
+    result = ResultV2.model_validate(labelled)
+    assert (result.label, result.fukurou.runner) == ("stamp-arena", "kotlin")
+    assert ResultV2.model_validate_json(result.model_dump_json()) == result
+
+
 def test_fixtures_exist():
     # ビューアとサイト生成のテストが使う v2 の fixture が 2 バージョン分あること
     assert len(FIXTURE_RESULTS) >= 2
