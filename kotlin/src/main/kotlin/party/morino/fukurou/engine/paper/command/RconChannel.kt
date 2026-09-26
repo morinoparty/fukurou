@@ -1,6 +1,11 @@
 package party.morino.fukurou.engine.paper.command
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import party.morino.fukurou.error.ServerUnavailableException
 import party.morino.fukurou.server.CommandResponse
@@ -34,32 +39,48 @@ internal class RconChannel(
         // 大きすぎるコマンドは接続する前に弾く（IllegalArgumentException はテストの誤りとしてそのまま投げる）
         val request = RconCodec.encode(COMMAND_ID, RconCodec.COMMAND_TYPE, command)
         val login = RconCodec.encode(LOGIN_ID, RconCodec.LOGIN_TYPE, password)
-        // ソケットの I/O は呼び出し元のスレッドを塞がないよう IO で行い、割り込み（キャンセル）で止められるようにする
-        val text = runInterruptible(Dispatchers.IO) { exchange(login, request) }
+        val socket = Socket()
+        val text = try {
+            coroutineScope {
+                // プラットフォームスレッド上の Socket の connect / read は割り込みでは止まらない。
+                // キャンセルされたらソケットを閉じ、塞がっている I/O を SocketException で抜けさせる
+                val closer = launch { try { awaitCancellation() } finally { socket.close() } }
+                try {
+                    // ソケットの I/O は呼び出し元のスレッドを塞がないよう IO で行う
+                    runInterruptible(Dispatchers.IO) { exchange(socket, login, request) }
+                } catch (error: ServerUnavailableException) {
+                    // キャンセルでソケットを閉じたための失敗は、サーバーの不調ではなくキャンセルとして伝える
+                    currentCoroutineContext().ensureActive()
+                    throw error
+                } finally {
+                    closer.cancel()
+                }
+            }
+        } finally {
+            socket.close()
+        }
         return CommandResponse(command, text)
     }
 
-    /** 接続・認証・コマンドの送信・応答の受信を 1 本の接続で行う。 */
-    private fun exchange(login: ByteArray, request: ByteArray): String {
+    /** 接続・認証・コマンドの送信・応答の受信を 1 本の接続で行う。socket は呼び出し元が閉じる。 */
+    private fun exchange(socket: Socket, login: ByteArray, request: ByteArray): String {
         try {
-            Socket().use { socket ->
-                val millis = timeout.inWholeMilliseconds.toInt()
-                socket.connect(InetSocketAddress(host, port), millis)
-                // 応答が来ないまま固まらないよう、読み取りにも期限を付ける
-                socket.soTimeout = millis
-                val output = socket.getOutputStream()
-                val input = socket.getInputStream()
-                output.write(login)
-                output.flush()
-                // 認証に失敗するとサーバーはリクエスト ID を -1 にして返す
-                if (RconCodec.decode(input).requestId == RconCodec.AUTH_FAILED_ID) {
-                    throw ServerUnavailableException("RCON authentication failed")
-                }
-                output.write(request)
-                output.flush()
-                // Python 版と同じく応答は 1 パケットだけ読む
-                return RconCodec.decode(input).payload
+            val millis = timeout.inWholeMilliseconds.toInt()
+            socket.connect(InetSocketAddress(host, port), millis)
+            // 応答が来ないまま固まらないよう、読み取りにも期限を付ける
+            socket.soTimeout = millis
+            val output = socket.getOutputStream()
+            val input = socket.getInputStream()
+            output.write(login)
+            output.flush()
+            // 認証に失敗するとサーバーはリクエスト ID を -1 にして返す
+            if (RconCodec.decode(input).requestId == RconCodec.AUTH_FAILED_ID) {
+                throw ServerUnavailableException("RCON authentication failed")
             }
+            output.write(request)
+            output.flush()
+            // Python 版と同じく応答は 1 パケットだけ読む
+            return RconCodec.decode(input).payload
         } catch (error: IOException) {
             // プロセスの生死はここでは分からないので、エンジン側で "is not running" を補う
             throw ServerUnavailableException("RCON at $host:$port did not answer (${error.javaClass.simpleName}: ${error.message})")

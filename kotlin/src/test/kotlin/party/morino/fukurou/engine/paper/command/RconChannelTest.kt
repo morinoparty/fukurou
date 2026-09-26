@@ -1,8 +1,11 @@
 package party.morino.fukurou.engine.paper.command
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -11,6 +14,9 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.concurrent.thread
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.nanoseconds
+import kotlin.time.Duration.Companion.seconds
 
 /** プロセス内の偽の RCON サーバーで確かめる。 */
 class RconChannelTest {
@@ -60,5 +66,21 @@ class RconChannelTest {
         server.close()
         assertThrows<ServerUnavailableException> { runBlocking { RconChannel("127.0.0.1", port, "x").send("list") } }
         assertThrows<IllegalArgumentException> { runBlocking { RconChannel("127.0.0.1", port, "x").send("a".repeat(2000)) } }
+    }
+
+    @Test
+    @DisplayName("Cancellation closes the socket instead of waiting for the read timeout")
+    fun cancellable() = runBlocking {
+        // 接続は受けるが何も返さないサーバー
+        val silent = thread(isDaemon = true) { runCatching { server.accept().use { Thread.sleep(30_000) } } }
+        val started = System.nanoTime()
+        val result = withTimeoutOrNull(300.milliseconds) {
+            RconChannel("127.0.0.1", server.localPort, "secret", timeout = 30.seconds).send("list")
+        }
+        val elapsed = (System.nanoTime() - started).nanoseconds
+        assertNull(result)
+        // 読み取りの期限（30 秒）を待たずにキャンセルで抜ける
+        assertTrue(elapsed < 5.seconds, "send took $elapsed after cancellation")
+        silent.interrupt()
     }
 }
