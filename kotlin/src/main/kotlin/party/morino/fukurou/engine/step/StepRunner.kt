@@ -188,13 +188,14 @@ internal object StepRunner {
             action = action,
             label = label,
             startedAt = Instant.now(),
-            parallel = if (block != null && lane != null) ParallelInfo(block.index, lane) else null,
+            // 別のサーバーのテストに記録するときは、そのテストでのブロック番号を使う
+            parallel = if (block != null && lane != null) ParallelInfo(block.indexFor(run), lane) else null,
         )
         // ログには Python と同じく層とレーンの位置を残す
         val position = event.parallel?.let { ", parallel ${it.block} lane ${it.lane}" }.orEmpty()
         run.host.log("step ${event.provisionalId} (${event.phase.name.lowercase()}$position): $action on ${on ?: "-"}: $label")
         run.host.observer.stepStarted(run.testId, event)
-        if (block != null && lane != null) block.stepStarted(lane, event)
+        if (block != null && lane != null) block.stepStarted(lane, run, event)
         return event
     }
 

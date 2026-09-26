@@ -65,17 +65,21 @@ class ParallelRunnerTest {
 
     private val host = FakeHost()
 
+    /** 同じテストを実行する 2 台目のサーバー。 */
+    private val hostB = FakeHost()
+
     @AfterEach
     fun tearDown() {
         host.harnessScope.cancel()
+        hostB.harnessScope.cancel()
     }
 
     /** テスト t を始める。 */
-    private fun begin(timeout: Duration = 1.minutes): TestRun {
-        host.recorder.runPlanned(listOf(PlannedTest("A", "t", "t", "t", emptyList(), 0, "junit:A#t", "0")))
-        host.recorder.sessionStarted(0, SessionKind.INITIAL)
-        host.recorder.testStarted("t", 0, emptyList())
-        return TestRun(host, "t", 0, timeout)
+    private fun begin(timeout: Duration = 1.minutes, on: FakeHost = host): TestRun {
+        on.recorder.runPlanned(listOf(PlannedTest("A", "t", "t", "t", emptyList(), 0, "junit:A#t", "0")))
+        on.recorder.sessionStarted(0, SessionKind.INITIAL)
+        on.recorder.testStarted("t", 0, emptyList())
+        return TestRun(on, "t", 0, timeout)
     }
 
     /** 記録されたステップ。 */
@@ -191,6 +195,35 @@ class ParallelRunnerTest {
         } finally {
             ActiveTests.finish(run)
         }
+    }
+
+    @Test
+    @DisplayName("Lane steps on a second server use that test's own block and are flushed in order")
+    fun twoServers() {
+        val runA = begin()
+        val runB = begin(on = hostB)
+        // B のテストでは既に 1 つのブロックを使った（番号 0）
+        runB.nextBlock()
+        ActiveTests.begin(runA, "owner")
+        ActiveTests.begin(runB, "owner")
+        try {
+            // JUnit のテスト本体から（StepScope 無しで）呼ぶ
+            runBlocking {
+                val runner = ParallelRunner()
+                runner.lane { StepRunner.step(host, "Alice", "press_key", "a") { _, _ -> } }
+                runner.lane { StepRunner.step(hostB, "Bob", "press_key", "b") { _, _ -> } }
+                runner.run()
+                StepRunner.step(hostB, "Bob", "press_key", "after") { _, _ -> }
+            }
+        } finally {
+            ActiveTests.finish(runA)
+            ActiveTests.finish(runB)
+        }
+        val stepsB = hostB.recorder.build().tests.single().steps
+        // ブロックの終わりで B にも流され、後のステップより前に並ぶ。番号は B のテストのもの
+        assertEquals(listOf("b", "after"), stepsB.map { it.label })
+        assertEquals(ParallelInfo(1, 1), stepsB.first().parallel)
+        assertEquals(ParallelInfo(0, 0), steps().single().parallel)
     }
 
     @Test

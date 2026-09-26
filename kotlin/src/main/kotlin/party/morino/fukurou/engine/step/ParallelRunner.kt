@@ -56,7 +56,7 @@ internal class ParallelRunner(private val grace: Duration = GRACE) : ParallelSco
         if (lanes.isEmpty()) return
         // スコープが無ければ実行中のテスト（JUnit のテスト本体から呼ばれた場合）
         val run = if (outer != null) outer.run else ActiveTests.all().firstOrNull()
-        val block = ParallelBlock(run?.nextBlock() ?: 0)
+        val block = ParallelBlock(run?.nextBlock() ?: 0, run)
         val host = run?.host
         // レーンは呼び出し元ではなくサーバーのスコープで起動する（置き去りにできるように）
         val harness = host?.harnessScope ?: CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -103,6 +103,8 @@ internal class ParallelRunner(private val grace: Duration = GRACE) : ParallelSco
         } finally {
             // レーン 0 から順に steps へ並べる（contract.md:161）。置き去りにしたレーンの後の記録は無視される
             if (run != null) run.host.observer.blockFinished(run.testId, block.index)
+            // 2 台目のサーバーのテストに記録したレーンのステップも、そのテストのブロックとして閉じる
+            block.otherRuns().forEach { (other, index) -> other.host.observer.blockFinished(other.testId, index) }
         }
         rethrow(run, failures.sortedBy { it.first }.map { it.second }, deadlineError)
     }
@@ -125,7 +127,8 @@ internal class ParallelRunner(private val grace: Duration = GRACE) : ParallelSco
             if (job.isCompleted) return@forEachIndexed
             // 外部プロセス（xdotool・RCON）の中で止まっているレーン。ステップの記録はここで済ませ、レーンは置き去りにする
             run.host.warn("parallel block ${block.index} lane $lane is still running after ${grace.inWholeSeconds}s; leaving it behind")
-            val step = block.running(lane) ?: return@forEachIndexed
+            // ステップは持ち主とは別のサーバーのテストに記録していることがある（§1.8）
+            val (stepRun, step) = block.running(lane) ?: return@forEachIndexed
             val failed = step.copy(
                 status = StepStatus.FAILED,
                 finishedAt = Instant.now(),
@@ -133,13 +136,14 @@ internal class ParallelRunner(private val grace: Duration = GRACE) : ParallelSco
                 durationMs = null,
                 error = "$message during step ${step.provisionalId}",
             )
-            run.host.observer.stepFinished(run.testId, failed)
-            run.stepFailed(failed, null)
-            if (first == null) first = failed
+            stepRun.host.observer.stepFinished(stepRun.testId, failed)
+            stepRun.stepFailed(failed, null)
+            // 投げる例外は持ち主のテストのものなので、持ち主のステップにだけ結びつける
+            if (first == null && stepRun === run) first = failed
             // そのレーンがまだ操作しているかもしれないプレイヤーは、失敗時の撮影で触らず次のテストの前に起動し直す
             step.on?.takeIf { it != StepRunner.ON_SERVER }?.let { player ->
-                run.stranded += player
-                run.host.warn("$player: the client may still be driven by the abandoned lane; it will be relaunched")
+                stepRun.stranded += player
+                stepRun.host.warn("$player: the client may still be driven by the abandoned lane; it will be relaunched")
             }
         }
         // テストの失敗を、打ち切ったステップ（無ければ最初に失敗したステップ）に結びつける
