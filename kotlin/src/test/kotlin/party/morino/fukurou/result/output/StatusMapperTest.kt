@@ -53,7 +53,7 @@ class StatusMapperTest {
     }
 
     @Test
-    @DisplayName("A dead server fails the test and the run; other exceptions are errors")
+    @DisplayName("A dead server fails the test and the run; other exceptions fail the test in their phase")
     fun serverAndOther() {
         val died = ServerUnavailableException("rcon refused")
         assertEquals(TestOutcome(TestStatus.FAILED, TestFailurePhase.SCENARIO, "rcon refused"), StatusMapper.outcome(died))
@@ -62,6 +62,9 @@ class StatusMapperTest {
         assertEquals("server died during a: rcon refused", run?.message)
         assertNull(StatusMapper.runFailure(AssertionError(), "a"))
         val other = StatusMapper.outcome(IllegalStateException("oops"))
-        assertEquals(TestOutcome(TestStatus.ERROR, TestFailurePhase.SCENARIO, "IllegalStateException: oops"), other)
+        assertEquals(TestOutcome(TestStatus.FAILED, TestFailurePhase.SCENARIO, "IllegalStateException: oops"), other)
+        // 層は失敗したステップ（無ければテストが居た層）から決める
+        val inSetUp = StatusMapper.outcome(IllegalStateException("oops"), leasePhase = StepPhase.BEFORE_EACH)
+        assertEquals(TestOutcome(TestStatus.FAILED, TestFailurePhase.BEFORE_EACH, "IllegalStateException: oops"), inSetUp)
     }
 }

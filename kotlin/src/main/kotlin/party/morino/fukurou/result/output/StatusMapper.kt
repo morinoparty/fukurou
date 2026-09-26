@@ -63,8 +63,9 @@ internal object StatusMapper {
             cause is ServerUnavailableException -> TestOutcome(TestStatus.FAILED, TestFailurePhase.SCENARIO, message, stepId)
             // ログの照合・コマンドの失敗・opentest4j の assert はプラグインの誤りの候補
             cause is AssertionError -> TestOutcome(TestStatus.FAILED, phaseOf(failingStep?.phase ?: leasePhase), message, stepId)
-            // それ以外（テストのコードの例外など）はハーネスから見て予期しない失敗
-            else -> TestOutcome(TestStatus.ERROR, TestFailurePhase.SCENARIO, message, stepId)
+            // それ以外（テストのコードの例外など）も、Python（step_executor.py の except Exception）と同じく
+            // 失敗した層の failed にする。contract.md §2 では scenario / beforeEach / fixture の段階は failed だけを取る
+            else -> TestOutcome(TestStatus.FAILED, phaseOf(failingStep?.phase ?: leasePhase), message, stepId)
         }
     }
 
