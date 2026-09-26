@@ -99,8 +99,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@8379f6a1328ee0e06e2bb424dadb7b159856a326 # v4.4.0
 
       - name: Build and test the Kotlin library
+        # リポジトリ直下は Python のプロジェクトなので、Gradle の wrapper は kotlin/ にある。
         # 単体テストだけを実行する（Minecraft を起動する e2eTest は check に含まれない）
-        run: ./gradlew -p kotlin check
+        working-directory: kotlin
+        run: ./gradlew check
 
       - name: Upload the golden result files
         # ResultSchemaTest が書く result.json の見本。pydantic のモデルとの突き合わせに使う
