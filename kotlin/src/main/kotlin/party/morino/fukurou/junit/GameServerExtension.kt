@@ -8,6 +8,7 @@ import org.junit.jupiter.api.extension.AfterEachCallback
 import org.junit.jupiter.api.extension.BeforeAllCallback
 import org.junit.jupiter.api.extension.BeforeEachCallback
 import org.junit.jupiter.api.extension.BeforeTestExecutionCallback
+import org.junit.jupiter.api.extension.ExtensionConfigurationException
 import org.junit.jupiter.api.extension.ExtensionContext
 import org.junit.jupiter.api.extension.LifecycleMethodExecutionExceptionHandler
 import org.junit.jupiter.api.extension.ParameterContext
@@ -83,7 +84,8 @@ public abstract class GameServerExtension :
             val lease = LeaseRegistry.lease(javaClass)
             check(lease != null && lease.isStarted) {
                 "${javaClass.simpleName} has not started its server; register it with @ExtendWith(${javaClass.simpleName}::class) " +
-                    "or @RegisterExtension and use the server from a test or a @BeforeEach method"
+                    "or a static field (companion object { @JvmField @RegisterExtension val x = ${javaClass.simpleName}() }) " +
+                    "and use the server from a test or a @BeforeEach method"
             }
             return lease.server
         }
@@ -257,7 +259,11 @@ public abstract class GameServerExtension :
 
     /** このクラスのリース（beforeAll の後に必ずある）。 */
     private fun requireLease(): ServerLease =
-        checkNotNull(LeaseRegistry.lease(javaClass)) { "${javaClass.simpleName} has no server; its beforeAll did not run" }
+        LeaseRegistry.lease(javaClass) ?: throw ExtensionConfigurationException(
+            // インスタンスのフィールドに @RegisterExtension を付けると JUnit は beforeAll を呼ばない（Kotlin のクラス本体の val がこれになる）
+            "${javaClass.simpleName} has no server because its beforeAll did not run; register it with @ExtendWith(${javaClass.simpleName}::class) " +
+                "or a static field: companion object { @JvmField @RegisterExtension val x = ${javaClass.simpleName}() }",
+        )
 
     /** テストクラスに登録された fukurou の拡張の一覧（クラスのストア）。無ければ作る。 */
     private fun registered(context: ExtensionContext): CopyOnWriteArrayList<GameServerExtension> {

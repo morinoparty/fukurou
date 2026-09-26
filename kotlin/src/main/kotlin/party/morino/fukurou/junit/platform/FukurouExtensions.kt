@@ -67,10 +67,16 @@ internal object FukurouExtensions {
     private fun asFukurou(kind: Class<*>): Class<out GameServerExtension>? =
         kind.takeIf { GameServerExtension::class.java.isAssignableFrom(it) && !Modifier.isAbstract(it.modifiers) } as Class<out GameServerExtension>?
 
-    /** @RegisterExtension のフィールドの拡張の型。宣言が抽象型なら static の値から実際の型を読む。 */
+    /**
+     * @RegisterExtension のフィールドの拡張の型。宣言が抽象型なら static の値から実際の型を読む。
+     *
+     * static でないフィールドの拡張は、JUnit がテストのインスタンスを作った後に登録するので beforeAll / afterAll が呼ばれず、
+     * サーバーを起動できない。計画（stub の result.json）にも載せない。
+     */
     private fun fieldExtension(field: java.lang.reflect.Field): Class<out GameServerExtension>? {
+        if (!Modifier.isStatic(field.modifiers)) return null
         asFukurou(field.type)?.let { return it }
-        if (!GameServerExtension::class.java.isAssignableFrom(field.type) || !Modifier.isStatic(field.modifiers)) return null
+        if (!GameServerExtension::class.java.isAssignableFrom(field.type)) return null
         return runCatching { field.isAccessible = true; field.get(null)?.javaClass?.let(::asFukurou) }.getOrNull()
     }
 }
