@@ -9,7 +9,9 @@ import party.morino.fukurou.engine.process.ManagedProcess
 import party.morino.fukurou.engine.process.ProcessLauncher
 import party.morino.fukurou.engine.process.ProcessRegistry
 import party.morino.fukurou.error.SetupException
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -81,7 +83,15 @@ internal class VirtualDisplay(
         // -noreset: 最後のクライアントが切断してもサーバーをリセットしない（GLFW が初期化時に一度切断するため）
         val argv = listOf("Xvfb", display, "-screen", "0", SCREEN, "-nolisten", "tcp", "-noreset")
         val launched = runInterruptible(Dispatchers.IO) {
-            ProcessLauncher.launch("Xvfb $display", argv, logFile.toAbsolutePath().parent, logFile)
+            // 番号の衝突で終了した試行や、再起動前の出力をエラーの手がかりとして残すため追記する（xvfb.py の "ab"）
+            Files.createDirectories(logFile.toAbsolutePath().parent)
+            Files.writeString(
+                logFile,
+                "--- Xvfb $display attempt ---\n",
+                StandardOpenOption.CREATE,
+                StandardOpenOption.APPEND,
+            )
+            ProcessLauncher.launch("Xvfb $display", argv, logFile.toAbsolutePath().parent, logFile, append = true)
         }
         ProcessRegistry.register(ProcessRegistry.Kind.DISPLAY, launched)
         process = launched

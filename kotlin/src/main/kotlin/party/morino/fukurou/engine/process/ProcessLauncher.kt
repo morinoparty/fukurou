@@ -21,6 +21,7 @@ internal object ProcessLauncher {
      * @param logFile 出力の書き出し先
      * @param env 追加の環境変数
      * @param warn 警告の書き出し先（harness.log）
+     * @param append true なら logFile を空にせず追記する（Xvfb の再試行で前の試行の出力を残すため。Python の "ab"）
      */
     fun launch(
         name: String,
@@ -29,6 +30,7 @@ internal object ProcessLauncher {
         logFile: Path,
         env: Map<String, String> = emptyMap(),
         warn: (String) -> Unit = {},
+        append: Boolean = false,
     ): ManagedProcess {
         require(argv.isNotEmpty()) { "argv must not be empty" }
         // ログと作業ディレクトリの置き場所を先に作る（start_process と同じ）
@@ -38,8 +40,10 @@ internal object ProcessLauncher {
             .directory(cwd.toFile())
             .redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
             .redirectErrorStream(true)
-            // Redirect.to はファイルを空にしてから書く（Python の "wb" と同じ）
-            .redirectOutput(ProcessBuilder.Redirect.to(logFile.toFile()))
+            // Redirect.to はファイルを空にしてから書く（Python の "wb" と同じ）。append なら "ab" と同じく追記する
+            .redirectOutput(
+                if (append) ProcessBuilder.Redirect.appendTo(logFile.toFile()) else ProcessBuilder.Redirect.to(logFile.toFile()),
+            )
         builder.environment().putAll(env)
         val process = try {
             builder.start()
