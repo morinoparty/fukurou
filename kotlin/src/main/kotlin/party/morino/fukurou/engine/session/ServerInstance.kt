@@ -20,6 +20,7 @@ import party.morino.fukurou.engine.log.LogWindow
 import party.morino.fukurou.engine.log.WindowedLogView
 import party.morino.fukurou.engine.net.Sha256
 import party.morino.fukurou.engine.process.HostCheck
+import party.morino.fukurou.engine.process.ProcessRegistry
 import party.morino.fukurou.engine.services.EnginePlatformServices
 import party.morino.fukurou.engine.step.StepRunner
 import party.morino.fukurou.engine.step.StepScope
@@ -200,6 +201,14 @@ internal class ServerInstance private constructor(
     @Volatile
     private var closed = false
 
+    /**
+     * JVM の終了（Gradle の取り消し・SIGTERM）で中断したか。以後はプロセスの死亡を中断の結果として扱い、
+     * run の失敗・テストの結果・未実行のテストの skipped を記録しない（not run のまま残す）。
+     */
+    @Volatile
+    var isInterrupted: Boolean = false
+        private set
+
     /** test { } の計画順。 */
     private var nextOrder = 0
 
@@ -277,6 +286,8 @@ internal class ServerInstance private constructor(
             harness.info("session $sessionIndex (${kind.name.lowercase()}): $resultId is ready at ${started.provisioned.joinAddress}")
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
+            // 中断でプロセスが止められた結果の失敗は、起動の失敗として記録しない
+            if (isShuttingDown()) throw error
             val message = StatusMapper.messageOf(error)
             harness.error("${phase.name.lowercase()} failed: $message", error)
             recorder.runFailed(phase, message)
@@ -408,7 +419,7 @@ internal class ServerInstance private constructor(
         try {
             JoinCoordinator.join(this, player)
         } catch (error: Throwable) {
-            if (error is CancellationException) throw error
+            if (error is CancellationException || isShuttingDown()) throw error
             val message = StatusMapper.messageOf(error)
             harness.error("client-join failed: $message", error)
             recorder.runFailed(RunFailurePhase.CLIENT_JOIN, message)
@@ -565,25 +576,57 @@ internal class ServerInstance private constructor(
      */
     suspend fun prepareTest(fresh: Boolean) {
         deadReason?.let { throw ServerUnavailableException(it) }
+        checkNotInterrupted()
         // 起動直後のセッション（まだテストを走らせていない）はそのままで新品なので作り直さない
-        if (fresh && sessionRanTest) restartFresh()
+        if (fresh && sessionRanTest) {
+            try {
+                restartFresh()
+            } catch (error: Throwable) {
+                if (error is CancellationException || isShuttingDown()) throw error
+                // 再参加の失敗は join が run の失敗（client-join）として記録済みだが、deadReason は付けていない。
+                // 付けないと以後のテストが参加者の欠けたセッションで走ってしまうので、Python と同じくここで打ち切る
+                val reason = deadReason ?: "fresh-server restart failed: ${StatusMapper.messageOf(error)}"
+                abort(reason)
+                throw error
+            }
+        }
         for (player in joined.toList()) {
+            checkNotInterrupted()
             val reason = dirty[player.name] ?: player.deathReason() ?: continue
             harness.info("${player.name}: relaunching the client ($reason)")
             try {
                 player.relaunch()
             } catch (error: Throwable) {
-                if (error is CancellationException) throw error
+                if (error is CancellationException || isShuttingDown()) throw error
                 val reasonText = "client relaunch failed: ${player.name}"
                 val message = "$reasonText: ${StatusMapper.messageOf(error)}"
                 harness.error(message, error)
                 recorder.runFailed(RunFailurePhase.CLIENT_JOIN, message)
-                recorder.skipPending(reasonText)
-                deadReason = reasonText
+                abort(reasonText)
                 throw FukurouException(message, error)
             }
         }
     }
+
+    /**
+     * 以後のテストを走らせないようにする: deadReason を付け、未実行のテストを skipped にし、
+     * 残っているプロセス（クライアント・Xvfb・サーバー）を止める。止めないとメモリ予算からも見えないまま動き続ける。
+     *
+     * run の失敗は呼び出し元が先に記録しておく（最初の失敗だけが残るため）。
+     */
+    suspend fun abort(reason: String) = withContext(NonCancellable) {
+        if (deadReason == null) deadReason = reason
+        recorder.skipPending(reason)
+        runCatching { stopSession(reason) }.onFailure { harness.error("could not stop the session after: $reason", it) }
+    }
+
+    /** 中断（JVM の終了）の後なら、何も記録せずに投げる。 */
+    private fun checkNotInterrupted() {
+        if (isShuttingDown()) throw FukurouException("$resultId was interrupted (the JVM is shutting down)")
+    }
+
+    /** 中断したか、JVM のシャットダウンが始まったか（フックが interrupt を呼ぶ前の短い間も含める）。 */
+    fun isShuttingDown(): Boolean = isInterrupted || ProcessRegistry.isShuttingDown
 
     /**
      * 今のセッションを閉じ、まっさらなサーバーで次のセッションを始めて全員を再参加させる（session.py:143-156）。
@@ -605,6 +648,8 @@ internal class ServerInstance private constructor(
      * @param owner 同時に走ってよいテストの持ち主（ActiveTests.begin）
      */
     fun beginTest(testId: String, timeout: Duration, owner: Any? = null): TestRun {
+        // 中断の後に始めたテストは記録しない（not run のまま残す）
+        checkNotInterrupted()
         val run = TestRun(this, testId, sessionIndex, timeout)
         ActiveTests.begin(run, owner ?: run)
         sessionRanTest = true
@@ -644,6 +689,13 @@ internal class ServerInstance private constructor(
      * @return 記録した結末
      */
     suspend fun finishTest(run: TestRun, error: Throwable?): TestOutcome = withContext(NonCancellable) {
+        if (isShuttingDown()) {
+            // 中断の後にテストが見た失敗は、プロセスを止めた結果。撮影もサーバーの死亡の記録もせず、interrupted にする
+            // （interrupt が既に skipped にしていれば、testSkipped は警告だけで何もしない）
+            ActiveTests.finish(run)
+            recorder.testSkipped(run.testId, SKIP_INTERRUPTED)
+            return@withContext TestOutcome(TestStatus.SKIPPED, skipReason = SKIP_INTERRUPTED)
+        }
         try {
             val died = deadClient()
             val outcome = if (error is CancellationException && error !is TimeoutCancellationException) {
@@ -676,11 +728,11 @@ internal class ServerInstance private constructor(
             val died = serverError?.let { RunFailure(RunFailurePhase.SERVER, "$reason: ${it.message}") }
                 ?: StatusMapper.runFailure(error, run.testId)
                 ?: if (boot != null && !isServerAlive) RunFailure(RunFailurePhase.SERVER, "$reason: server exited during the test") else null
-            if (died != null && deadReason == null) {
+            if (died != null && deadReason == null && !isShuttingDown()) {
                 harness.error(died.message)
                 recorder.runFailed(died.phase, died.message)
-                recorder.skipPending(reason)
-                deadReason = reason
+                // 残ったクライアントと Xvfb（死んでいなければサーバーも）を止め、メモリ予算に戻す
+                abort(reason)
             }
         }
     }
@@ -762,8 +814,7 @@ internal class ServerInstance private constructor(
      * 最後まで進めてから最初の失敗を投げる。
      */
     suspend fun stopSession(failure: String?) = withContext(NonCancellable) {
-        if (!sessionOpen) return@withContext
-        sessionOpen = false
+        if (!takeOpenSession()) return@withContext
         val current = boot
         boot = null
         val errors = mutableListOf<Throwable>()
@@ -781,6 +832,14 @@ internal class ServerInstance private constructor(
         }
         recorder.sessionFinished(sessionIndex, logs, failure ?: deadReason)
         errors.firstOrNull()?.let { throw it }
+    }
+
+    /** 開いているセッションを閉じる側に 1 回だけ回す（stopSession と中断の後片付けが同時に呼ばれても二重にしない）。 */
+    @Synchronized
+    private fun takeOpenSession(): Boolean {
+        if (!sessionOpen) return false
+        sessionOpen = false
+        return true
     }
 
     /** サーバーのコンソールの記録（既に artifact の中にある）と、起動したクライアントのログ・クラッシュレポート。 */
@@ -830,12 +889,15 @@ internal class ServerInstance private constructor(
     }
 
     /**
-     * JVM の終了（Gradle の取り消し・SIGTERM）: 実行中のテストを skipped: interrupted にし、run の失敗を記録して書く（§5.8）。
-     * プロセスは ProcessRegistry が止める。
+     * JVM の終了（Gradle の取り消し・SIGTERM）の前半。プロセスを止める前に呼ぶ（§5.8）。
+     * 実行中のテストを skipped: interrupted にし、run の失敗 interrupted を記録する。
+     *
+     * プロセスが死ぬより前に記録するので、JUnit のスレッドがその死亡を見ても「サーバーが死んだ」にはならない。
      */
     fun interrupt() {
         if (closed) return
         closed = true
+        isInterrupted = true
         val running = ActiveTests.on(this)
         if (running != null) {
             // 走り切れなかったテストは契約どおり skipped にし、途中の記録は残さない
@@ -843,8 +905,25 @@ internal class ServerInstance private constructor(
             ActiveTests.finish(running)
         }
         recorder.runFailed(RunFailurePhase.INTERRUPTED, "interrupted during ${running?.testId ?: "session $sessionIndex"}")
+    }
+
+    /**
+     * JVM の終了の後半。ProcessRegistry がプロセスを止めた後に呼ぶ。
+     * ログを回収してセッションを閉じ（Python の _teardown → GameSession.stop と同じ）、result.json を確定する。
+     */
+    fun finishInterrupt() {
+        if (!isInterrupted) return
+        if (takeOpenSession()) {
+            val logs = runCatching { collectLogs() }.getOrElse {
+                harness.error("could not collect logs", it)
+                emptyList()
+            }
+            recorder.sessionFinished(sessionIndex, logs, SKIP_INTERRUPTED)
+        }
         recorder.runFinished()
+        harness.info("${recorder.status.name.lowercase()}: wrote ${layout.resultFile}")
         harness.close()
+        harnessScope.cancel()
     }
 
     /** 表示用。 */

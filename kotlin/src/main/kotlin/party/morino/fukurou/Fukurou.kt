@@ -89,7 +89,12 @@ public class Fukurou internal constructor(public val config: FukurouConfig, priv
         servers += server
         // Gradle の取り消しや SIGTERM でも、走っていたテストを interrupted として書き残す（§5.8）
         if (hookRegistered.compareAndSet(false, true)) {
-            ProcessRegistry.addShutdownListener { servers.toList().forEach { it.interrupt() } }
+            ProcessRegistry.addShutdownListener(
+                // プロセスを止める前に、実行中のテストを interrupted にする
+                beforeStop = { servers.toList().forEach { it.interrupt() } },
+                // 止めた後に、ログを回収して result.json を確定する
+                afterStop = { servers.toList().forEach { it.finishInterrupt() } },
+            )
         }
     }
 
