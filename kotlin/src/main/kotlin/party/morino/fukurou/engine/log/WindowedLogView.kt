@@ -1,6 +1,7 @@
 package party.morino.fukurou.engine.log
 
 import party.morino.fukurou.engine.step.TestDeadline
+import party.morino.fukurou.log.LogAssertionError
 import party.morino.fukurou.log.LogMark
 import party.morino.fukurou.log.LogMatch
 import party.morino.fukurou.log.LogView
@@ -22,12 +23,24 @@ internal class WindowedLogView(
     private val liveness: () -> Unit,
     private val deadline: () -> TestDeadline?,
 ) : LogView {
-    override fun mark(): LogMark = TODO("WP5: WindowedLogView.mark($window, $source, $artifactPath)")
+    override fun mark(): LogMark = window().offset()
 
     override suspend fun await(pattern: Regex, timeout: Duration, after: LogMark?): LogMatch =
-        TODO("WP5: WindowedLogView.await($pattern, $timeout, $after, $liveness, $deadline)")
+        LogWaiter.await(window(), pattern, timeout, after, source, artifactPath(), liveness, deadline())
 
-    override fun assertAbsent(pattern: Regex, after: LogMark?): Unit = TODO("WP5: WindowedLogView.assertAbsent($pattern, $after)")
+    override fun assertAbsent(pattern: Regex, after: LogMark?) {
+        val current = window()
+        val text = current.read(after)
+        val firstLine = current.firstLineNumber(after)
+        // Python は最初の一致だけを報告していたが、一致した行をすべて（行ごとに 1 回）挙げる
+        val matches = pattern.multiline().findAll(text)
+            .map { toLogMatch(text, firstLine, it) }
+            .distinctBy { it.lineNumber }
+            .map { it.lineNumber to it.line }
+            .toList()
+        if (matches.isEmpty()) return
+        throw LogAssertionError(absentMessage(source, pattern, artifactPath(), matches, after))
+    }
 
-    override fun text(after: LogMark?): String = TODO("WP5: WindowedLogView.text($after)")
+    override fun text(after: LogMark?): String = window().read(after)
 }
