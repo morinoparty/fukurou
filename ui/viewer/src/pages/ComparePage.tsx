@@ -6,7 +6,7 @@ import { ShotLinks } from "../components/overview/ShotLinks";
 import { ScreenshotThumb } from "../components/ScreenshotThumb";
 import { StatusBadge } from "../components/StatusBadge";
 import type { ManifestRun } from "../contract";
-import { findScreenshot, findTest, runBadgeStatus, supportedResult, testLabel } from "../lib/runs";
+import { findScreenshot, findTest, runBadgeStatus, runLabel, supportedResult, testLabel } from "../lib/runs";
 import { useManifest } from "../manifest/useManifest";
 import { emptyBoxStyle, pageTitle, panelStyle, sectionTitleStyle } from "../styles";
 
@@ -89,7 +89,7 @@ function CompareCell({ run, testId, player, shot }: CompareCellProps) {
   const result = supportedResult(run);
   const test = result ? findTest(result, testId) : undefined;
   const screenshot = test ? findScreenshot(test, player, shot) : undefined;
-  const version = result?.minecraft.version ?? run.id;
+  const version = runLabel(run);
   return (
     <div className={cell}>
       <div className={cellHeader}>

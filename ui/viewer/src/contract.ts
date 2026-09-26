@@ -26,6 +26,8 @@ export type Isolation = "reset" | "fresh-server";
 export interface FukurouInfo {
   version: string;
   portablemc: string;
+  /** 結果を書いたランナー。JVM 版（fukurou-kotlin）は "kotlin"、Python 版は null か省略 */
+  runner?: string | null;
 }
 
 export interface MinecraftInfo {
@@ -236,8 +238,10 @@ export interface CiInfo {
 /** result.json（schemaVersion 2）のルート */
 export interface ResultV2 {
   schemaVersion: 2;
-  /** "<server>-<minecraft version>"（例: paper-1.21.11） */
+  /** "<server>-<minecraft version>[-<label>]"（例: paper-1.21.11、paper-26.3-stamp-arena） */
   id: string;
+  /** 1 つのジョブが同じバージョンで複数のサーバーを実行したとき（fukurou-kotlin）のサーバーのラベル */
+  label?: string | null;
   status: RunStatus;
   fukurou: FukurouInfo;
   minecraft: MinecraftInfo;
@@ -306,10 +310,12 @@ export interface ManifestTest {
 
 export interface ManifestRun {
   id: string;
-  /** 元の artifact 名（例: fukurou-paper-1.21.11） */
+  /** 元の artifact 名（例: fukurou-paper-1.21.11）。入れ子の束の run は "<artifact>/<run id>" */
   artifact: string;
   /** サイト内のこの run のディレクトリ（例: runs/paper-1.21.11/）。result 内のパスはここからの相対 */
   base: string;
+  /** result の label（ラベルの無い run と古い manifest では null か省略） */
+  label?: string | null;
   status: RunStatus;
   /** result.json が無かった artifact では null */
   result: AnyResult | null;

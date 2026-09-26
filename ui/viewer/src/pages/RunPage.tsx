@@ -16,7 +16,7 @@ import { SessionsList } from "../components/run/SessionsList";
 import { TestsTable } from "../components/run/TestsTable";
 import { formatDuration } from "../lib/format";
 import { findLogIndex } from "../lib/logs";
-import { flatLogs, supportedResult } from "../lib/runs";
+import { flatLogs, runTitle, supportedResult } from "../lib/runs";
 import { useManifest } from "../manifest/useManifest";
 import { pageTitle } from "../styles";
 
@@ -61,7 +61,7 @@ export function RunPage() {
     <div>
       {nav}
       <header className={header}>
-        <h1 className={pageTitle}>Minecraft {result.minecraft.version}</h1>
+        <h1 className={pageTitle}>{runTitle(result)}</h1>
         <StatusBadge status={result.status} size="md" />
         <ChannelBadge channel={result.minecraft.channel} />
         <span className={css({ color: "fg.muted" })}>

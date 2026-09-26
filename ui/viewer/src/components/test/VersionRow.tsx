@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { css } from "styled-system/css";
 import type { ManifestRun } from "../../contract";
 import { formatDuration } from "../../lib/format";
-import { findTest, runBadgeStatus, supportedResult } from "../../lib/runs";
+import { findTest, runBadgeStatus, runLabel, supportedResult } from "../../lib/runs";
 import { emptyBoxStyle, panelStyle } from "../../styles";
 import { ChannelBadge } from "../ChannelBadge";
 import { Hint } from "../Hint";
@@ -48,11 +48,11 @@ export function VersionRow({ run, testId, players }: VersionRowProps) {
       <div className={css({ minWidth: "0" })}>
         {test ? (
           <Link to="/runs/$runId/tests/$testId" params={{ runId: run.id, testId }} className={version}>
-            {result?.minecraft.version ?? run.id}
+            {runLabel(run)}
           </Link>
         ) : (
           <Link to="/runs/$runId" params={{ runId: run.id }} className={version}>
-            {result?.minecraft.version ?? run.id}
+            {runLabel(run)}
           </Link>
         )}
         <div className={css({ mt: "1", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "2" })}>

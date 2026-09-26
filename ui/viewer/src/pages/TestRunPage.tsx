@@ -13,7 +13,7 @@ import { PlayerScreenshots } from "../components/run/PlayerScreenshots";
 import { runCrumb, testRunCrumb, testRunNeighbour } from "../components/run/runNav";
 import { StepTimeline } from "../components/run/StepTimeline";
 import { formatDateTime, formatDuration, shortHash } from "../lib/format";
-import { findTest, supportedResult, testLabel } from "../lib/runs";
+import { findTest, runTitle, supportedResult, testLabel } from "../lib/runs";
 import { useManifest } from "../manifest/useManifest";
 import { buttonLinkStyle, mutedText, pageTitle, panelStyle } from "../styles";
 
@@ -72,7 +72,7 @@ export function TestRunPage() {
     return (
       <>
         {nav}
-        <Message title={`${testId} was not run on Minecraft ${result.minecraft.version}`}>
+        <Message title={`${testId} was not run on ${runTitle(result)}`}>
           <p>This version's run does not contain the test (it may have been filtered out with tests / tags inputs).</p>
           <p>
             <Link to="/runs/$runId" params={{ runId }}>
@@ -99,7 +99,7 @@ export function TestRunPage() {
         <h1 className={pageTitle}>{testLabel(test)}</h1>
         <StatusBadge status={test.status} size="md" />
         <span className={css({ color: "fg.muted" })}>
-          Minecraft {result.minecraft.version} · {formatDuration(test.durationMs)}
+          {runTitle(result)} · {formatDuration(test.durationMs)}
         </span>
         <ChannelBadge channel={result.minecraft.channel} />
         {test.tags.map((name) => (

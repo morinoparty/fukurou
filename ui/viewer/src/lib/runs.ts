@@ -50,9 +50,17 @@ export function unsupportedReason(run: ManifestRun): string {
   return `This run uses result schemaVersion ${String(version)}, which this viewer does not support. Use a newer fukurou/ui.`;
 }
 
-/** run の表示名。result があれば Minecraft のバージョン、無ければ run id */
+/** run の表示名。result があれば Minecraft のバージョン（ラベル付きの run は "26.3 · stamp-arena"）、無ければ run id */
 export function runLabel(run: ManifestRun): string {
-  return supportedResult(run)?.minecraft.version ?? run.id;
+  const result = supportedResult(run);
+  if (!result) return run.id;
+  // 同じバージョンで複数のサーバーを実行したとき（fukurou-kotlin）に区別できるよう、ラベルを添える
+  return result.label ? `${result.minecraft.version} · ${result.label}` : result.minecraft.version;
+}
+
+/** 見出し用の run の名前（例: "Minecraft 1.21.11"、ラベル付きの run は "Minecraft 26.3 · stamp-arena"） */
+export function runTitle(result: ResultV2): string {
+  return `Minecraft ${result.minecraft.version}` + (result.label ? ` · ${result.label}` : "");
 }
 
 /** run の中の 1 テストを id で探す */
