@@ -1,9 +1,13 @@
 package party.morino.fukurou.server
 
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import party.morino.fukurou.Fukurou
+import party.morino.fukurou.engine.session.ServerInstance
 import party.morino.fukurou.error.SetupException
 import party.morino.fukurou.player.PlayerProfile
 import party.morino.fukurou.plugin.PluginSource
+import party.morino.fukurou.result.model.enums.SessionKind
 import java.nio.file.Path
 import kotlin.time.Duration
 
@@ -11,7 +15,7 @@ import kotlin.time.Duration
  * 凍結した ServerSpec。作成時に label の形式を検査し、違反は SetupException。
  *
  * 種類の能力と設定の整合（plugins があるのに PluginSupport が無い、Reset なのに ResetPlanner が無い）は
- * ServerPlatform.bind で能力が分かる start() の中で検査する（WP6）。
+ * ServerPlatform.bind で能力が分かる start() の中で、ダウンロードより前に検査する。
  */
 public class ServerDefinition internal constructor(
     internal val fukurou: Fukurou,
@@ -61,10 +65,24 @@ public class ServerDefinition internal constructor(
         }
     }
 
-    /** 起動し、準備完了（種類のレディネス + プラグイン有効化確認）まで待つ。 */
+    /**
+     * 起動し、準備完了（種類のレディネス + プラグイン有効化確認）まで待つ。宣言済みのプレイヤーがいれば全員を参加させる。
+     *
+     * 失敗したら run の失敗を result.json に書き、起動したプロセスを止めてから投げる。
+     */
     public suspend fun start(): GameServer {
-        // WP6: ServerInstance を作って起動する
-        TODO("ServerDefinition.start is implemented by the session engine (WP6)")
+        // ダウンロードより前に run ディレクトリと result.json（計画だけ）を用意する
+        val server = ServerInstance.open(fukurou, this, suite = null, planned = emptyList())
+        try {
+            server.start(SessionKind.INITIAL)
+            server.install(players)
+            players.forEach { server.join(it) }
+        } catch (error: Throwable) {
+            // 記録は start / join が済ませている。途中まで起動したものを止めて result.json を確定する
+            withContext(NonCancellable) { server.stop() }
+            throw error
+        }
+        return server
     }
 
     internal companion object {
