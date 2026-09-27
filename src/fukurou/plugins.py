@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import glob
 from pathlib import Path
 import re
+import warnings
 import zipfile
 import zlib
 
@@ -90,11 +91,11 @@ def inspect_plugins(plugins_dir: Path, patterns_text: str) -> list[PluginJar]:
 
 def read_descriptor(jar: zipfile.ZipFile) -> dict:
     """paper-plugin.yml または plugin.yml を読む。どちらも無ければ空の dict。YAML が壊れていれば yaml.YAMLError。"""
-    names = set(jar.namelist())
+    groups = {group[0].filename: group for group in entry_groups(jar)}
     for descriptor in DESCRIPTOR_FILES:
-        if descriptor in names:
+        if descriptor in groups:
             # BaseLoader で読み、version: 1.10 が 1.1 のような数値に変わらないよう文字列のまま扱う
-            data = yaml.load(jar.read(descriptor).decode("utf-8", errors="replace"), Loader=yaml.BaseLoader)
+            data = yaml.load(read_entry(jar, groups[descriptor]).decode("utf-8", errors="replace"), Loader=yaml.BaseLoader)
             return data if isinstance(data, dict) else {}
     return {}
 
@@ -102,14 +103,43 @@ def read_descriptor(jar: zipfile.ZipFile) -> dict:
 def max_class_major(jar: zipfile.ZipFile) -> int | None:
     """jar 内のクラスファイルの major 番号（バイト 6〜7）の最大値。クラスが無ければ None。"""
     majors = []
-    for entry in jar.infolist():
-        if not entry.filename.endswith(".class") or entry.filename.startswith(MULTI_RELEASE_PREFIX):
+    for group in entry_groups(jar):
+        name = group[0].filename
+        if not name.endswith(".class") or name.startswith(MULTI_RELEASE_PREFIX):
             continue
-        with jar.open(entry) as file:
-            header = file.read(8)
+        header = read_entry(jar, group, 8)
         if len(header) == 8 and header[:4] == CLASS_FILE_MAGIC:
             majors.append(int.from_bytes(header[6:8], "big"))
     return max(majors, default=None)
+
+
+def entry_groups(jar: zipfile.ZipFile) -> list[list[zipfile.ZipInfo]]:
+    """同じローカルヘッダを指す central directory の項目をまとめる。
+
+    PacketEvents の jar のように、1つの項目が central directory に2回載っている jar がある。
+    Java は問題なく読めるが、Python の zipfile は重なった項目とみなし、3.12 系の一部では
+    片方を開くと BadZipFile（possible zip bomb）になるため、実体ごとに1回だけ読む。
+    """
+    groups: dict[int, list[zipfile.ZipInfo]] = {}
+    for entry in jar.infolist():
+        groups.setdefault(entry.header_offset, []).append(entry)
+    return list(groups.values())
+
+
+def read_entry(jar: zipfile.ZipFile, candidates: list[zipfile.ZipInfo], size: int = -1) -> bytes:
+    """同じ実体を指す項目のうち、開けたものから size バイト（-1 なら全体）を読む。どれも開けなければ最後の例外を送出する。"""
+    error: zipfile.BadZipFile | None = None
+    for entry in candidates:
+        try:
+            # 新しい Python は重複項目を警告だけで読むため、正常な jar としてその警告は出さない
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message="Overlapped entries", category=UserWarning)
+                with jar.open(entry) as file:
+                    return file.read(size)
+        except zipfile.BadZipFile as caught:
+            error = caught
+    assert error is not None
+    raise error
 
 
 def required_java(minecraft_java: int, plugins: list[PluginJar]) -> int:

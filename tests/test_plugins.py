@@ -1,5 +1,6 @@
 """plugins.py の jar の探索と、plugin.yml・クラスファイルの読み取りを確認するテスト。"""
 
+import struct
 import zipfile
 
 import pytest
@@ -57,6 +58,39 @@ def test_non_plugin_jar_and_broken_files(tmp_path):
     bad_yaml = build_jar(tmp_path / "Bad.jar", {"plugin.yml": "name: [unclosed\nmain: a.B\n"})
     with pytest.raises(InvalidInputError, match="invalid plugin descriptor"):
         PluginJar.inspect(bad_yaml)
+
+
+def duplicate_central_entries(path):
+    """central directory の各項目をもう1回ずつ載せる（PacketEvents の jar と同じ作り）。"""
+    data = path.read_bytes()
+    eocd = data.rindex(b"PK\x05\x06")
+    count, size, offset = struct.unpack("<HII", data[eocd + 10 : eocd + 20])
+    records, position = [], offset
+    while position < offset + size:
+        name_len, extra_len, comment_len = struct.unpack("<HHH", data[position + 28 : position + 34])
+        end = position + 46 + name_len + extra_len + comment_len
+        # 同じローカルヘッダを指す項目を直後に並べる
+        records += [data[position:end], data[position:end]]
+        position = end
+    directory = b"".join(records)
+    tail = data[eocd : eocd + 8] + struct.pack("<HHII", count * 2, count * 2, len(directory), offset) + data[eocd + 20 :]
+    path.write_bytes(data[:offset] + directory + tail)
+    return path
+
+
+def test_reads_jars_that_list_entries_twice(tmp_path):
+    jar = duplicate_central_entries(
+        build_jar(
+            tmp_path / "packetevents.jar",
+            {
+                "plugin.yml": "name: packetevents\nversion: 2.14.0\n",
+                "a/A.class": class_bytes(52),
+                "a/B.class": class_bytes(61),
+            },
+        )
+    )
+    plugin = PluginJar.inspect(jar)
+    assert (plugin.name, plugin.version, plugin.class_file_major) == ("packetevents", "2.14.0", 61)
 
 
 def test_reads_the_log_prefix(tmp_path):
