@@ -203,11 +203,26 @@ runs:
         selected="$(uv run --frozen --no-dev --project "$GITHUB_ACTION_PATH" fukurou "${args[@]}")"
         echo "Selected tests: $selected"
 
-    - name: Install the virtual display and client dependencies
+    # パッケージはクライアント（Xvfb・xdotool・Mesa）にしか要らないので、apt-get はバックグラウンドで始め、
+    # Java の準備・キャッシュの復元・サーバーの起動と並行させる。fukurou run は最初のクライアントの起動直前に
+    # FUKUROU_SYSTEM_DEPS_STATUS のディレクトリの exit-code を待ち、apt のログを表示する
+    - name: Start installing the virtual display and client dependencies
+      id: system-deps
       if: inputs.skip-system-deps != 'true'
       shell: bash
-      # パッケージの一覧は setup/action.yml（Kotlin 版）と共有するスクリプトにまとめてある
-      run: bash "$GITHUB_ACTION_PATH/scripts/install-system-deps.sh"
+      run: |
+        # 同じジョブで fukurou を複数回使っても混ざらないよう、呼び出しごとに状態ディレクトリを分ける
+        status_dir="$(mktemp -d "$RUNNER_TEMP/fukurou-system-deps.XXXXXX")"
+        # パッケージの一覧は setup/action.yml（Kotlin 版）と共有するスクリプトにまとめてある。
+        # 終了コードは一時ファイルから mv して、読む側が書きかけの値を見ないようにする。
+        # 標準入出力をこのステップから切り離さないと、ランナーはインストールの終了までステップを終えない
+        setsid nohup bash -c '
+          bash "$1/scripts/install-system-deps.sh" >"$2/apt.log" 2>&1
+          echo "$?" >"$2/exit-code.tmp"
+          mv "$2/exit-code.tmp" "$2/exit-code"
+        ' _ "$GITHUB_ACTION_PATH" "$status_dir" </dev/null >/dev/null 2>&1 &
+        echo "status-dir=$status_dir" >> "$GITHUB_OUTPUT"
+        echo "apt-get is running in the background (log: $status_dir/apt.log)"
 
     - name: Determine the Java version for the server
       id: java
@@ -254,6 +269,8 @@ runs:
       env:
         # GPU の無いランナーで Mesa のソフトウェアレンダリングを使う
         LIBGL_ALWAYS_SOFTWARE: "true"
+        # バックグラウンドの apt-get の状態ディレクトリ。skip-system-deps のときは空で、fukurou は何も待たない
+        FUKUROU_SYSTEM_DEPS_STATUS: ${{ steps.system-deps.outputs.status-dir }}
         # github: 形式の依存プラグインを GitHub API から取得するときに使う
         GITHUB_TOKEN: ${{ inputs.github-token }}
         MINECRAFT_VERSION: ${{ inputs.minecraft-version }}
@@ -325,6 +342,29 @@ runs:
           args+=(--server-build "$SERVER_BUILD")
         fi
         uv run --frozen --no-dev --project "$GITHUB_ACTION_PATH" fukurou "${args[@]}"
+
+    # クライアントの起動前に run が失敗した（またはクライアントを使うテストが無かった）場合も、apt-get を
+    # 動かしたままアクションを終えない。後続の利用者のステップの apt-get が dpkg のロックで失敗しないようにし、ログも残す
+    - name: Wait for the system dependencies
+      if: always() && steps.system-deps.outcome == 'success'
+      shell: bash
+      env:
+        STATUS_DIR: ${{ steps.system-deps.outputs.status-dir }}
+      run: |
+        # fukurou run が待った後ならすぐに終わる
+        for _ in $(seq 1 600); do
+          [ -f "$STATUS_DIR/exit-code" ] && break
+          sleep 1
+        done
+        echo "::group::apt-get: install the system packages"
+        cat "$STATUS_DIR/apt.log" || true
+        echo "::endgroup::"
+        if [ ! -f "$STATUS_DIR/exit-code" ]; then
+          echo "::warning::apt-get did not finish installing the system packages within 600 seconds."
+        elif [ "$(cat "$STATUS_DIR/exit-code")" != "0" ]; then
+          # 実行の成否は fukurou run が決める（クライアントを起動していれば、そこで失敗にしている）
+          echo "::warning::apt-get failed to install the system packages (exit code $(cat "$STATUS_DIR/exit-code"))."
+        fi
 
     # サーバーやクライアントの本体・アセットは out-dir に含まれないため、そのままアップロードしてよい
     - name: Upload screenshots, logs and result.json

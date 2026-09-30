@@ -11,6 +11,7 @@ from fukurou.errors import FukurouError
 from fukurou.runner.cancellation import pause
 from fukurou.runner.client import ClientProcess
 from fukurou.runner.process import read_log
+from fukurou.runner.system_deps import wait_for_system_deps
 from fukurou.runner.x11_input import MinecraftWindow
 from fukurou.runner.xvfb import VirtualDisplay
 
@@ -69,6 +70,8 @@ class PlayerSession:
 
     def start(self, server_port: int) -> None:
         """専用ディスプレイを起動し、その上でクライアントを起動してサーバーへ参加させる。"""
+        # Xvfb・xdotool・Mesa はアクションがバックグラウンドで入れている。ここが最初に要る所なので完了を待つ
+        wait_for_system_deps()
         display_name = self.display.start()
         logger.info("%s: display %s", self.name, display_name)
         self.client.start(server_port, display_name)

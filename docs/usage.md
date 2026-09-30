@@ -91,7 +91,7 @@ What the action does:
 
 1. Checks the inputs and computes `work-dir` / `out-dir` / `artifact-name`.
 2. Installs uv, then runs `fukurou list` with the same selection inputs to catch a bad suite, an empty selection or a typo'd filter **before** installing anything else — the step fails here (exit 2) without touching `apt-get` or downloading the server.
-3. Installs `xvfb`, `xdotool` and the OpenGL/OpenAL libraries with `apt-get` (unless `skip-system-deps` is `true`).
+3. Starts installing `xvfb`, `xdotool` and the OpenGL/OpenAL libraries with `apt-get` **in the background** (unless `skip-system-deps` is `true`). Only the clients need them, so the install overlaps with the next steps and the server startup; `fukurou run` waits for it right before it starts the first client (failing the run if `apt-get` failed or did not finish within 10 minutes), and a later step prints the `apt-get` log in a collapsed group and makes sure it has finished before the action returns.
 4. Picks the server's Java version (`java-version: auto` runs `fukurou java`), then installs it with `actions/setup-java` (Temurin).
 5. Restores the PortableMC and Mojang asset cache under `work-dir` with `actions/cache`.
 6. Runs `fukurou run` with Mesa software rendering (`LIBGL_ALWAYS_SOFTWARE=true`): one server session, every selected test's players joined once, tests run in order with a harness reset (or a fresh server, for `isolation: fresh-server` tests) between them.
