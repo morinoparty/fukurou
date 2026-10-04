@@ -9,7 +9,7 @@ import java.time.format.DateTimeFormatter
 import kotlin.io.path.createDirectories
 
 /**
- * fukurou 自身の出力を標準エラーと logs/harness.log の両方へ書く（run/harness_log.py）。
+ * fukurou 自身の出力を標準エラーと logs/harness.log の両方へ書く。
  *
  * SLF4J などには依存しない小さな書き出し先。1 サーバー（1 run ディレクトリ）に 1 つ。
  *
@@ -22,7 +22,7 @@ internal class HarnessLog(
     private val mirror: PrintStream? = System.err,
     private val clock: Clock = Clock.systemDefaultZone(),
 ) : AutoCloseable {
-    /** ファイルへの書き出し先。実行ごとに作り直す（Python の mode="w" と同じ）。 */
+    /** ファイルへの書き出し先。実行ごとに作り直す（追記せず上書きする）。 */
     private val writer: BufferedWriter? = file?.let {
         it.parent?.createDirectories()
         Files.newBufferedWriter(it, Charsets.UTF_8)
@@ -43,7 +43,7 @@ internal class HarnessLog(
     /** 1 行を書く。レーンのスレッドからも呼ばれるので直列にする。 */
     @Synchronized
     private fun log(level: String, message: String, error: Throwable? = null) {
-        // コンソールは Python と同じ "[fukurou] <message>" の短い形
+        // コンソールは "[fukurou] <message>" の短い形
         mirror?.println("$CONSOLE_PREFIX$message")
         if (closed || writer == null) return
         // parallel のレーンからの行を見分けられるよう、ファイルにはスレッド名も残す
@@ -68,10 +68,10 @@ internal class HarnessLog(
         /** コンソールの行の接頭辞。 */
         private const val CONSOLE_PREFIX = "[fukurou] "
 
-        /** ロガー名（Python のルートロガー名と同じ）。 */
+        /** ロガー名。 */
         private const val LOGGER_NAME = "fukurou"
 
-        /** Python logging の asctime と同じ形（2026-09-26 12:00:00,123）。 */
+        /** ファイルの行の時刻の形（2026-09-26 12:00:00,123）。 */
         private val TIMESTAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss,SSS")
     }
 }

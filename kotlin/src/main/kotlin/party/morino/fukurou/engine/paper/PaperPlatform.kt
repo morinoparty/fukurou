@@ -21,6 +21,7 @@ import party.morino.fukurou.spi.model.ChannelEndpoint
 import party.morino.fukurou.spi.model.PlatformInfo
 import party.morino.fukurou.spi.model.ProvisionRequest
 import party.morino.fukurou.spi.model.Provisioned
+import java.io.InputStream
 import java.net.InetSocketAddress
 import java.nio.file.Path
 import java.security.SecureRandom
@@ -33,11 +34,13 @@ import java.util.Locale
  * @property type Paper の種類の値
  * @property services エンジンのサービス
  * @property api Paper のダウンロード API（テストで差し替えられるようにする）
+ * @property agentJar 埋め込んだエージェントの jar を開く（テストで差し替えられるようにする）。null なら jar が無い
  */
 internal class PaperPlatform(
     override val type: Paper,
     private val services: PlatformServices,
     private val api: PaperApi = PaperApi(),
+    private val agentJar: () -> InputStream? = PaperAgentInstall::openResource,
 ) : ServerPlatform {
     /** Component の JSON。サーバーのバージョンで形が決まるので 1 つを使い回す。 */
     private val codec = ComponentCodec(type.version)
@@ -54,9 +57,11 @@ internal class PaperPlatform(
     private var javaMajor: Int? = null
 
     override suspend fun provision(request: ProvisionRequest): Provisioned {
+        // エージェントの jar が無ければ、ダウンロードより前に止める
+        val agent = if (type.agent) PaperAgentInstall.load(agentJar) else null
         val build = resolvedBuild ?: resolveBuild().also { resolvedBuild = it }
         val jar = downloadJar(build)
-        // ポートと RCON のパスワードはセッションごとに新しくする（server/process.py:34-41）
+        // ポートと RCON のパスワードはセッションごとに新しくする
         val port = services.freePort()
         val rconPort = services.freePort()
         val password = newPassword()
@@ -70,6 +75,8 @@ internal class PaperPlatform(
             managed = managed,
         )
         ignored.forEach { services.warn("server property $it is managed by fukurou; the given value is ignored") }
+        // サーバーディレクトリを作り直した後に入れる（ポートとトークンはセッションごとに新しくする）
+        val agentEndpoint = agent?.let { PaperAgentInstall.install(request.serverDir, it, services.freePort()) }
         if (javaMajor == null) javaMajor = JavaRequirement.actualMajor(request.serverJava)
         // Paperclip が展開するライブラリや Mojang の jar の置き場。実行ごとに作り直さないようキャッシュに置く
         val bundlerDir = bundlerDir()
@@ -92,6 +99,7 @@ internal class PaperPlatform(
             channelEndpoint = ChannelEndpoint.Rcon(rconPort, password),
             // 同じバージョンの Paperclip の展開は直列にする（違うバージョンは並行して起動できる）
             bundlerLock = bundlerDir,
+            agentEndpoint = agentEndpoint,
         )
     }
 
@@ -143,7 +151,7 @@ internal class PaperPlatform(
         )
     }
 
-    /** ビルドを決める。決め打ちのビルドがしきい値より不安定なら、使うが警告する（suite_run.py:127）。 */
+    /** ビルドを決める。決め打ちのビルドがしきい値より不安定なら、使うが警告する。 */
     private suspend fun resolveBuild(): PaperBuild {
         val build = api.resolve(type.version, type.channel, type.build)
         services.log("Paper ${type.version} build ${build.id} (${build.channel})")
@@ -167,7 +175,7 @@ internal class PaperPlatform(
     /** Paperclip の展開先（cache/paper-bundler/<v>）。 */
     private fun bundlerDir(): Path = services.cacheDir.resolve("paper-bundler").resolve(type.version.id)
 
-    /** fukurou が制御に使うため、利用者に上書きさせない server.properties の値（server/process.py:43-52）。 */
+    /** fukurou が制御に使うため、利用者に上書きさせない server.properties の値。 */
     private fun managedProperties(port: Int, rconPort: Int, password: String, maxPlayers: Int): Map<String, String> =
         linkedMapOf(
             "server-ip" to LOOPBACK,

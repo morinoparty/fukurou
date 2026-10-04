@@ -12,7 +12,7 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 
 /**
- * Paper のプラグインの導入（server_dir.py:53 copy_plugins）と有効化の確認（plugin_checks.py:82 check_plugins）。
+ * Paper のプラグインの導入と有効化の確認。
  *
  * @property warn 確認に失敗したときの説明の書き出し先（harness.log）
  */
@@ -34,8 +34,8 @@ internal class PaperPluginSupport(private val warn: (String) -> Unit = {}) : Plu
     /**
      * 全プラグインの有効化を確認し、ファイル名 → 有効化できたか を返す。
      *
-     * Python 版と違って例外は投げない（SPI の契約）。false を run の失敗にするのはエンジンで、
-     * その説明（Python の PluginCheckError の文面）は harness.log に書く。
+     * 例外は投げない（SPI の契約）。false を run の失敗にするのはエンジンで、
+     * その説明は harness.log に書く。
      * 起動完了（Done）の時点で通常は有効化が終わっているため、timeout は短くてよい。
      */
     override suspend fun checkEnabled(
@@ -59,7 +59,7 @@ internal class PaperPluginSupport(private val warn: (String) -> Unit = {}) : Plu
         /** プラグインを置くディレクトリ。 */
         private const val PLUGINS_DIR = "plugins"
 
-        /** ログを読み直す間隔（plugin_checks.py と同じ 0.5 秒）。 */
+        /** ログを読み直す間隔（0.5 秒）。 */
         private val POLL = 500.milliseconds
     }
 }

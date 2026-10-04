@@ -7,10 +7,9 @@ import kotlin.io.path.deleteRecursively
 import kotlin.io.path.isDirectory
 
 /**
- * 1 サーバー（1 run）ごとの作業ディレクトリ（run/suite_run.py:143-155,520-525）。
+ * 1 サーバー（1 run）ごとの作業ディレクトリ。
  *
- * Python は work-dir 全体の server / clients / logs を実行ごとに消すが（_reset_work_dir）、
- * Kotlin 版は 1 JVM で複数のサーバーを動かすので、run ごとに servers/<runId>/ を分けて全体は消さない。
+ * 1 JVM で複数のサーバーを動かすので、run ごとに servers/<runId>/ を分け、work-dir 全体は消さない。
  * tools/ と cache/ は全サーバーで共有する（ロックで守る）。
  *
  * @property workDir fukurou の作業ディレクトリ

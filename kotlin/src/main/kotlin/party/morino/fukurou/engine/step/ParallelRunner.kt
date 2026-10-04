@@ -26,7 +26,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * parallel { lane {…}; lane {…} } を実行する（run/parallel.py:87-200 の移植、§4.12）。
+ * parallel { lane {…}; lane {…} } を実行する（§4.12）。
  *
  * レーンはブロックを抜けたときに同時に走り、全レーンの終了を待つ。1 つのレーンが失敗しても他のレーンは最後まで走る。
  * サーバーが死んだときは他のレーンを打ち切り、テストの期限を過ぎたら全レーンを打ち切って猶予（30 秒）だけ待つ。
@@ -46,7 +46,7 @@ internal class ParallelRunner(private val grace: Duration = GRACE) : ParallelSco
     /**
      * 宣言したレーンを同時に走らせ、全レーンの終了（または期限切れの猶予）を待つ。
      *
-     * 例外は サーバーの死亡 → 期限切れ → ハーネスの不具合 → 時間順で最初のステップの失敗 の順に 1 つを投げる（parallel.py:185）。
+     * 例外は サーバーの死亡 → 期限切れ → ハーネスの不具合 → 時間順で最初のステップの失敗 の順に 1 つを投げる。
      */
     suspend fun run() {
         val outer = StepScope.current()
@@ -62,7 +62,8 @@ internal class ParallelRunner(private val grace: Duration = GRACE) : ParallelSco
         val harness = host?.harnessScope ?: CoroutineScope(SupervisorJob() + Dispatchers.IO)
         // 停止したサーバーのスコープではレーンが起動せず、何もせずに終わってしまう
         check(harness.isActive) { "${host?.resultId ?: "the server"} was stopped; parallel lanes cannot start" }
-        val base = outer ?: StepScope(run)
+        // 作ったスコープは implicit（レーンの中のサーバーに属さないステップは実行中のテストすべてに記録する）
+        val base = outer ?: StepScope(run, implicit = true)
         // レーンの中の例外（時刻つき）。レーンの外へは run() の最後に 1 つだけ投げる
         val failures = ConcurrentLinkedQueue<Pair<Long, Throwable>>()
         val jobs = ArrayList<Job>(lanes.size)
@@ -77,7 +78,7 @@ internal class ParallelRunner(private val grace: Duration = GRACE) : ParallelSco
                     if (isActive) failures += System.nanoTime() to cancelled else throw cancelled
                 } catch (error: Throwable) {
                     failures += System.nanoTime() to error
-                    // サーバーが死んだら他のレーンの待ちは無駄なので打ち切る（parallel.py:117）
+                    // サーバーが死んだら他のレーンの待ちは無駄なので打ち切る
                     if (error is ServerUnavailableException) cancelOthers(jobs, lane, block, "cancelled: ${error.message}")
                 }
             }
@@ -110,7 +111,7 @@ internal class ParallelRunner(private val grace: Duration = GRACE) : ParallelSco
     }
 
     /**
-     * 期限切れ: レーンを打ち切り、猶予の後も動いているレーンを置き去りにする（parallel.py:153-178 _stop_lanes）。
+     * 期限切れ: レーンを打ち切り、猶予の後も動いているレーンを置き去りにする。
      *
      * @return テストを timeout にする例外
      */
@@ -168,7 +169,7 @@ internal class ParallelRunner(private val grace: Duration = GRACE) : ParallelSco
 
     /** 定数。 */
     companion object {
-        /** 打ち切ってからレーンの合流を待つ時間（parallel.py:29 GRACE_SECONDS）。 */
+        /** 打ち切ってからレーンの合流を待つ時間。 */
         val GRACE: Duration = 30.seconds
     }
 }

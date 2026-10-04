@@ -11,7 +11,7 @@ import java.nio.file.StandardCopyOption
 import java.security.DigestInputStream
 
 /**
- * .part に書きながら sha256 を計算し、一致したら原子的に移す（net.py:74-113）。
+ * .part に書きながら sha256 を計算し、一致したら原子的に移す。
  *
  * @property userAgent 送る User-Agent（Paper の API は必須）
  */

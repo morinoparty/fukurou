@@ -3,7 +3,7 @@ package party.morino.fukurou.engine.step
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * parallel ブロックの検証（scenario/expansion.py:26-32,130-148,206-222 の移植）。
+ * parallel ブロックの検証。
  *
  * レーンの数の上限・入れ子の禁止を起動前に検査し、実行中は「同じプレイヤーへ入力するレーンは 1 本だけ」を守らせる。
  * 同じクライアントへ 2 つのレーンがキーを送ると、打鍵が混ざって結果が再現しないため。
@@ -27,7 +27,7 @@ internal class LaneGuard(val block: Int) {
 
     /** 検査の定数と、起動前の検査。 */
     companion object {
-        /** 1 ブロックのレーンの上限（expansion.py:26 MAX_PARALLEL_LANES）。 */
+        /** 1 ブロックのレーンの上限。 */
         const val MAX_LANES: Int = 16
 
         /**

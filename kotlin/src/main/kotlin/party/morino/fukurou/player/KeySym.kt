@@ -21,7 +21,7 @@ public value class KeySym(public val keysym: String) {
         /** keysym 名の文字。 */
         private val NAME = Regex("[A-Za-z0-9_]+")
 
-        /** よく使われる別名を X11 の keysym 名へ寄せる（player_actions.py:10-14）。 */
+        /** よく使われる別名を X11 の keysym 名へ寄せる。 */
         private val ALIASES = mapOf("Enter" to "Return", "Esc" to "Escape", "Space" to "space")
 
         /** F1。 */
@@ -75,8 +75,74 @@ public value class KeySym(public val keysym: String) {
         /** t（チャット欄を開く）。 */
         public val T: KeySym = KeySym("t")
 
-        /** d（F3 + D でチャットを消す）。 */
+        /** w（前進）。 */
+        public val W: KeySym = KeySym("w")
+
+        /** a（左へ移動）。 */
+        public val A: KeySym = KeySym("a")
+
+        /** s（後退）。 */
+        public val S: KeySym = KeySym("s")
+
+        /** d（右へ移動。F3 + D でチャットを消す）。 */
         public val D: KeySym = KeySym("d")
+
+        /** e（インベントリを開く）。 */
+        public val E: KeySym = KeySym("e")
+
+        /** q（手に持ったアイテムを捨てる）。 */
+        public val Q: KeySym = KeySym("q")
+
+        /** f（オフハンドと持ち替える）。 */
+        public val F: KeySym = KeySym("f")
+
+        /** 左の Shift（スニーク。keysym は Shift_L）。 */
+        public val SHIFT: KeySym = KeySym("Shift_L")
+
+        /** 左の Ctrl（ダッシュ。keysym は Control_L）。 */
+        public val CONTROL: KeySym = KeySym("Control_L")
+
+        /** BackSpace。 */
+        public val BACKSPACE: KeySym = KeySym("BackSpace")
+
+        /** 上矢印。 */
+        public val UP: KeySym = KeySym("Up")
+
+        /** 下矢印。 */
+        public val DOWN: KeySym = KeySym("Down")
+
+        /** 左矢印。 */
+        public val LEFT: KeySym = KeySym("Left")
+
+        /** 右矢印。 */
+        public val RIGHT: KeySym = KeySym("Right")
+
+        /** 1（ホットバーのスロット 0）。 */
+        public val DIGIT_1: KeySym = KeySym("1")
+
+        /** 2（ホットバーのスロット 1）。 */
+        public val DIGIT_2: KeySym = KeySym("2")
+
+        /** 3（ホットバーのスロット 2）。 */
+        public val DIGIT_3: KeySym = KeySym("3")
+
+        /** 4（ホットバーのスロット 3）。 */
+        public val DIGIT_4: KeySym = KeySym("4")
+
+        /** 5（ホットバーのスロット 4）。 */
+        public val DIGIT_5: KeySym = KeySym("5")
+
+        /** 6（ホットバーのスロット 5）。 */
+        public val DIGIT_6: KeySym = KeySym("6")
+
+        /** 7（ホットバーのスロット 6）。 */
+        public val DIGIT_7: KeySym = KeySym("7")
+
+        /** 8（ホットバーのスロット 7）。 */
+        public val DIGIT_8: KeySym = KeySym("8")
+
+        /** 9（ホットバーのスロット 8）。 */
+        public val DIGIT_9: KeySym = KeySym("9")
 
         /** /（コマンド入力でチャット欄を開く）。 */
         public val SLASH: KeySym = KeySym("slash")

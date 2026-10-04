@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.Duration
 
 /**
- * 実行中のテスト 1 件の状態（scenario_runner.py の touched / stranded と、step_executor.py の失敗の記録）。
+ * 実行中のテスト 1 件の状態（入力を受けたか・置き去りのレーンがあるか・失敗の記録）。
  *
  * ステップ・parallel・スクリーンショットはこれを通して記録先（testId）と期限を知る。JUnit 拡張の ServerLease も
  * 同じものを使う（ServerInstance.beginTest / finishTest）。レーンから同時に触られるので、可変の状態はスレッド安全にする。
@@ -40,6 +40,9 @@ internal class TestRun(
     /** 次の parallel ブロックの番号（beforeEach・fixture・テストを通して 0 から数える）。 */
     private val blocks = AtomicInteger(0)
 
+    /** 次の repeat ブロックの番号（parallel とは別に、テストを通して 0 から数える）。 */
+    private val repeatBlocks = AtomicInteger(0)
+
     /**
      * クライアントへ入力したプレイヤー。passed で終わらなければ画面が開いたままかもしれないので、次に使う前に起動し直す。
      */
@@ -48,8 +51,11 @@ internal class TestRun(
     /** 期限切れの猶予を過ぎてもレーンが操作し続けていた（置き去りにした）プレイヤー。失敗時の撮影でも触らない。 */
     val stranded: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
-    /** "<player>/<name>" → そのスクリーンショットを撮ったステップの仮 id（名前の重複を知らせる）。 */
-    private val screenshotNames = ConcurrentHashMap<String, Long>()
+    /**
+     * "<player>/<name>" → そのスクリーンショットの持ち主（撮ったステップの仮 id、または eventually / awaitUntil の
+     * QuietBlock）。名前の重複を知らせる。
+     */
+    private val screenshotNames = ConcurrentHashMap<String, Any>()
 
     /** リセットの失敗（ResetInfo.error）。あればテストは error（phase reset）。 */
     @Volatile
@@ -72,18 +78,31 @@ internal class TestRun(
     /** 次の parallel ブロックの番号を取る。 */
     fun nextBlock(): Int = blocks.getAndIncrement()
 
+    /** 次の repeat ブロックの番号を取る。 */
+    fun nextRepeatBlock(): Int = repeatBlocks.getAndIncrement()
+
     /**
      * ステップが失敗した。error はそのステップが投げた例外（打ち切りなら null）。
+     *
+     * step {} の中のステップが失敗すると、同じ例外で外側のステップも失敗する。例外には最初に記録した
+     * （いちばん内側の）ステップを結びつけたままにする。コルーチンのスタックトレースの復元は、withTimeout を
+     * 抜けるたびに元の例外を写す（写しの cause は元の例外）ので、原因の連なりの全部に同じステップを結びつけ、
+     * 既に結びついたステップがあればそれを使う。
      */
     @Synchronized
     fun stepFailed(event: StepEvent, error: Throwable?) {
         if (firstFailedStep == null) firstFailedStep = event
-        error?.let { errorSteps[it] = event }
+        if (error == null) return
+        val step = stepOf(error) ?: event
+        causes(error).forEach { errorSteps.putIfAbsent(it, step) }
     }
 
     /** 例外 error を投げたステップ。原因をたどって探し、見つからなければ null。 */
-    fun stepOf(error: Throwable?): StepEvent? =
-        generateSequence(error) { it.cause?.takeIf { cause -> cause !== it } }.take(MAX_CAUSES).firstNotNullOfOrNull { errorSteps[it] }
+    fun stepOf(error: Throwable?): StepEvent? = causes(error).firstNotNullOfOrNull { errorSteps[it] }
+
+    /** error とその原因（循環に備えて MAX_CAUSES 段まで）。 */
+    private fun causes(error: Throwable?): Sequence<Throwable> =
+        generateSequence(error) { it.cause?.takeIf { cause -> cause !== it } }.take(MAX_CAUSES)
 
     /** 例外をステップの失敗として記録済みか（parallel でハーネスの不具合とステップの失敗を見分ける）。 */
     fun isStepError(error: Throwable): Boolean = errorSteps.containsKey(error)
@@ -94,14 +113,17 @@ internal class TestRun(
     }
 
     /**
-     * スクリーンショットの名前を取る。
+     * スクリーンショットの名前を取る。同じ持ち主（eventually の試行どうし）なら撮り直しとして許す。
      *
-     * @throws IllegalArgumentException このテストで同じプレイヤーが同じ名前を使った
+     * @param owner 撮ったステップの仮 id（Long）か、記録しない試行のブロック（同一性で比べる）
+     * @throws IllegalArgumentException このテストで同じプレイヤーが同じ名前を別の持ち主で使った
      */
-    fun claimScreenshot(player: String, name: String, stepId: Long) {
+    fun claimScreenshot(player: String, name: String, owner: Any) {
         // 同じ名前で上書きすると、先に撮った画像が result.json から指せなくなる
-        val earlier = screenshotNames.putIfAbsent("$player/$name", stepId) ?: return
-        throw IllegalArgumentException("screenshot '$name' of $player was already taken in this test (step $earlier); use a unique name")
+        val earlier = screenshotNames.putIfAbsent("$player/$name", owner) ?: return
+        if (earlier == owner) return
+        val where = if (earlier is Long) "step $earlier" else "an earlier eventually/awaitUntil block"
+        throw IllegalArgumentException("screenshot '$name' of $player was already taken in this test ($where); use a unique name")
     }
 
     /** 定数。 */

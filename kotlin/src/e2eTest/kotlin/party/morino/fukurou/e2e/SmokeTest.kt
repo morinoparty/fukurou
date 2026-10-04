@@ -51,7 +51,7 @@ class SmokeTest {
     suspend fun `teleport and screenshots`(arena: SmokeArena, server: GameServer) {
         val alice = arena.alice
         val bob = arena.bob
-        // 足場を置き、スクリーンショットが奈落を向かないようにする（examples/fukurou.yml の platform と同じ）
+        // 足場を置き、昼・晴れにして、スクリーンショットが奈落を向かないようにする
         server.fill(BlockPos(-3, -61, -3), BlockPos(3, -61, 3), "minecraft:stone")
         server.time(6000)
         server.weatherClear()

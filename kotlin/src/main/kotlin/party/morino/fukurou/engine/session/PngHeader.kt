@@ -5,7 +5,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * PNG の署名と IHDR から幅と高さを読む（runner/player_session.py:154-165）。純粋。
+ * PNG の署名と IHDR から幅と高さを読む。純粋。
  */
 internal object PngHeader {
     /** PNG の先頭 8 バイト。 */

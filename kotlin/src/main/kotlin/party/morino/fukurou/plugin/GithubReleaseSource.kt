@@ -1,7 +1,7 @@
 package party.morino.fukurou.plugin
 
 /**
- * GitHub のリリースのアセット（dependencies.py:128-149）。
+ * GitHub のリリースのアセット。
  *
  * @property repository owner/name
  * @property tag リリースのタグ

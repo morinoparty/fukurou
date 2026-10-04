@@ -13,7 +13,7 @@ import java.util.Properties
 import java.time.Duration as JavaDuration
 
 /**
- * HTTP での取得（net.py:30-57）。java.net.http の HttpClient を 1 つ使い、リダイレクトは通常どおり追う。
+ * HTTP での取得。java.net.http の HttpClient を 1 つ使い、リダイレクトは通常どおり追う。
  *
  * @property userAgent 送る User-Agent。Paper の API は連絡先の分かる User-Agent を求めている
  * @property redirect リダイレクトの扱い（GitHub のアセットだけ NEVER を使う）
@@ -55,7 +55,7 @@ internal class Http(
         val response = send(request(url, headers), HttpResponse.BodyHandlers.ofString())
         val status = response.statusCode()
         if (status >= 400) {
-            // API のエラーメッセージを短く取り出してメッセージに含める（net.py:115 _error_detail）
+            // API のエラーメッセージを短く取り出してメッセージに含める
             val detail = response.body().trim().take(ERROR_DETAIL_LIMIT).ifEmpty { "HTTP $status" }
             val message = "GET $url failed with HTTP $status: $detail"
             // 存在しないバージョンやビルドを呼び出し側で入力の誤りとして扱えるよう、404 だけ別の型にする
@@ -75,14 +75,14 @@ internal class Http(
     }
 
     /**
-     * HTTP 404（net.py NotFoundError）。存在しないバージョンやビルドの指定を入力の誤りとして扱えるようにする。
+     * HTTP 404。存在しないバージョンやビルドの指定を入力の誤りとして扱えるようにする。
      *
      * @param message 失敗した URL と応答の本文を含むメッセージ
      */
     class NotFound(message: String) : FukurouException(message)
 
     companion object {
-        /** 接続と応答ヘッダーまでの待ち時間（net.py TIMEOUT_SECONDS）。 */
+        /** 接続と応答ヘッダーまでの待ち時間。 */
         val TIMEOUT: JavaDuration = JavaDuration.ofSeconds(60)
 
         /** エラー応答の本文から取り出す最大の文字数。 */

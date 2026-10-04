@@ -1,4 +1,4 @@
-# リポジトリの直下は Python のプロジェクトなので、Kotlin のライブラリは kotlin/ でビルドする
+# Gradle のプロジェクトは kotlin/ にある（リポジトリの直下はアクションとビューア）ので、kotlin/ でビルドする
 jdk:
   - openjdk21
 install:

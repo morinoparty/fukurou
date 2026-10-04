@@ -1,5 +1,6 @@
 package party.morino.fukurou.player
 
+import party.morino.fukurou.engine.test.StepHost
 import java.nio.file.Path
 
 /**
@@ -19,4 +20,11 @@ public data class Screenshot(
     val artifactPath: String,
     val width: Int,
     val height: Int,
-)
+) {
+    /**
+     * 撮影したサーバー。比べるステップ（compare_screenshot）をそのサーバーのテストに記録するのに使う。
+     * 1 つのテストを 2 台のサーバーで実行していても、別のサーバーのテストに載せない。
+     * fukurou の外で作ったもの（と copy の結果）は null で、そのときは記録先を StepScope と実行中のテストから決める。
+     */
+    internal var origin: StepHost? = null
+}

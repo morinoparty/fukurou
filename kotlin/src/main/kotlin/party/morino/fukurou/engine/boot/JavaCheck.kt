@@ -9,7 +9,7 @@ import party.morino.fukurou.version.MinecraftVersion
 import java.nio.file.Path
 
 /**
- * サーバーの Java が Minecraft とプラグインの要求を満たすかを、起動前に確かめる（suite_run.py:499-513 _check_java）。
+ * サーバーの Java が Minecraft とプラグインの要求を満たすかを、起動前に確かめる。
  *
  * 種類に共通の検査なので、ServerPlatform ではなくエンジンが行う（§4.3）。
  */

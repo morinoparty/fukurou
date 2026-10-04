@@ -17,7 +17,7 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeoutException
 
 /**
- * テストが投げた例外を result.json の status / failure.phase に対応づける（§6.4、run/step_executor.py の分類）。
+ * テストが投げた例外を result.json の status / failure.phase に対応づける（§6.4）。
  *
  * 純粋関数。JUnit が無くても動くよう、opentest4j の TestAbortedException はクラス名で見分ける。
  */
@@ -25,7 +25,7 @@ internal object StatusMapper {
     /** JUnit の仮定の失敗（Assumptions）。compileOnly のため、クラスを直接参照しない。 */
     private const val TEST_ABORTED = "org.opentest4j.TestAbortedException"
 
-    /** ステップの失敗を表す段階（model.py STEP_FAILURE_PHASES）。これ以外の段階はハーネス側の失敗（error）。 */
+    /** ステップの失敗を表す段階。これ以外の段階はハーネス側の失敗（error）。 */
     val STEP_FAILURE_PHASES: Set<TestFailurePhase> =
         setOf(TestFailurePhase.BEFORE_EACH, TestFailurePhase.FIXTURE, TestFailurePhase.SCENARIO)
 
@@ -63,7 +63,7 @@ internal object StatusMapper {
             cause is ServerUnavailableException -> TestOutcome(TestStatus.FAILED, TestFailurePhase.SCENARIO, message, stepId)
             // ログの照合・コマンドの失敗・opentest4j の assert はプラグインの誤りの候補
             cause is AssertionError -> TestOutcome(TestStatus.FAILED, phaseOf(failingStep?.phase ?: leasePhase), message, stepId)
-            // それ以外（テストのコードの例外など）も、Python（step_executor.py の except Exception）と同じく
+            // それ以外（テストのコードの例外など）も、ステップの失敗と同じく
             // 失敗した層の failed にする。contract.md §2 では scenario / beforeEach / fixture の段階は failed だけを取る
             else -> TestOutcome(TestStatus.FAILED, phaseOf(failingStep?.phase ?: leasePhase), message, stepId)
         }
@@ -93,7 +93,7 @@ internal object StatusMapper {
         }
 
     /**
-     * 例外のメッセージ。fukurou の例外と assert はそのまま、それ以外は型名を付ける（step_executor.py:96）。
+     * 例外のメッセージ。fukurou の例外と assert はそのまま、それ以外は型名を付ける。
      */
     fun messageOf(error: Throwable): String =
         if (error is FukurouException || error is AssertionError || isAborted(error)) {

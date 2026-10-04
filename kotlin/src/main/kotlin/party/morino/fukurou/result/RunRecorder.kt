@@ -34,7 +34,7 @@ import java.time.Instant
 import java.util.Properties
 
 /**
- * 1 サーバー（1 つの result.json）分の実行の結果（result/recorder.py:274-373 RunRecorder）。
+ * 1 サーバー（1 つの result.json）分の実行の結果。
  *
  * エンジンの出来事（RunObserver）を受け取り、途中で失敗してもその時点までの内容で result.json を書けるようにする。
  * 書き出しは §6.5 の時点（計画直後・各テストの後・run の失敗・セッションの終了・run の終了）で自動で行い、
@@ -309,7 +309,7 @@ internal class RunRecorder(
     }
 
     /**
-     * 始めた後に skipped で閉じたテストを sessions[].tests から外す（suite_run.py:386 _abandon_test、contract.md §2）。
+     * 始めた後に skipped で閉じたテストを sessions[].tests から外す（contract.md §2）。
      * skip が警告だけで何もしなかった（既に閉じていた）場合もあるので、仮定せず status で確かめる。
      */
     private fun dropIfSkipped(testId: String) {
@@ -340,7 +340,7 @@ internal class RunRecorder(
     /** status の導出と、version.properties の読み込み。 */
     companion object {
         /**
-         * run の status（model.py derive_run_status）。インフラの失敗があれば error、
+         * run の status。インフラの失敗があれば error、
          * いずれかのテストが failed / error なら failed、それ以外は passed。
          */
         fun deriveStatus(failure: RunFailure?, statuses: List<TestStatus>): RunStatus =
@@ -350,7 +350,7 @@ internal class RunRecorder(
                 else -> RunStatus.PASSED
             }
 
-        /** ステータスごとの件数（model.py summarize_tests）。 */
+        /** ステータスごとの件数。 */
         fun summarize(tests: List<TestResult>): Summary {
             val counts = tests.groupingBy { it.status }.eachCount()
             return Summary(

@@ -8,6 +8,7 @@ import party.morino.fukurou.log.LogMark
 import party.morino.fukurou.log.LogMatch
 import party.morino.fukurou.log.LogView
 import party.morino.fukurou.server.GameServer
+import party.morino.fukurou.state.PlayerSnapshot
 import party.morino.fukurou.world.GameMode
 import party.morino.fukurou.world.Location
 import party.morino.fukurou.world.Worlds
@@ -52,7 +53,7 @@ public interface Player : Audience, Identified {
     /** 文字列をキーボードで入力する。 */
     public suspend fun typeText(text: String)
 
-    /** T でチャット欄を開き、0.5 秒待って入力し、Return で送る（player_session.py:87）。 */
+    /** T でチャット欄を開き、0.5 秒待って入力し、Return で送る。 */
     public suspend fun chat(text: String)
 
     /**
@@ -64,10 +65,62 @@ public interface Player : Audience, Identified {
     /** F5 を (target - current) mod 3 回押して視点を合わせる。 */
     public suspend fun perspective(perspective: Perspective)
 
-    /** F2 で撮影し、tests/<id>/screenshots/<player>/<name>.png に保存する。 */
+    /**
+     * F2 で撮影し、tests/<id>/screenshots/<player>/<name>.png に保存する。
+     *
+     * 名前はテストの中でプレイヤーごとに一意にする。ただし eventually / awaitUntil の中では試行ごとに同じ名前で撮り直してよく
+     * （後の試行が上書きする）、スクリーンショットはその eventually / awaitUntil のステップに結びつく。
+     */
     public suspend fun screenshot(name: String): Screenshot
 
+    // --- 押したままの入力とマウス（v3 設計 §2.2）。押したものはテストの終わりに必ず離す ---
+
+    /** キーを押したままにする。 */
+    public suspend fun keyDown(key: KeySym)
+
+    /** 押したままのキーを離す。 */
+    public suspend fun keyUp(key: KeySym)
+
+    /** キーを duration の間押し続ける（hold_key）。 */
+    public suspend fun holdKey(key: KeySym, duration: Duration)
+
+    /** keys を押したまま block を実行し、最後に（例外や取り消しでも）離す。 */
+    public suspend fun <T> holding(keys: List<KeySym>, block: suspend () -> T): T
+
+    /** key を押したまま block を実行し、最後に（例外や取り消しでも）離す。 */
+    public suspend fun <T> holding(key: KeySym, block: suspend () -> T): T = holding(listOf(key), block)
+
+    /** マウスをウィンドウの座標（1280x720）へ動かす。GUI のカーソルを動かす（ゲーム中の視点の操作には look を使う）。 */
+    public suspend fun mouseMove(x: Int, y: Int)
+
+    /** 今のカーソルの位置でクリックする。 */
+    public suspend fun click(button: MouseButton = MouseButton.LEFT)
+
+    /** (x, y) へ動かしてクリックする。 */
+    public suspend fun click(x: Int, y: Int, button: MouseButton = MouseButton.LEFT)
+
+    /** ボタンを duration の間押し続ける（ブロックの破壊など）。 */
+    public suspend fun holdMouse(button: MouseButton, duration: Duration)
+
+    /** ホイールを回す。正で下（ホットバーの右）、負で上。 */
+    public suspend fun scroll(steps: Int)
+
+    /** ホットバーのスロット（0〜8）を数字キーで選ぶ。 */
+    public suspend fun selectHotbar(slot: Int)
+
+    /** 左クリック（攻撃・破壊）。 */
+    public suspend fun attack(): Unit = click(MouseButton.LEFT)
+
+    /** 右クリック（使う・置く）。 */
+    public suspend fun useItem(): Unit = click(MouseButton.RIGHT)
+
     // --- サーバー側の操作（PlayerCommands 能力。無ければ UnsupportedCapabilityException） ---
+
+    /** 位置を変えずに向きを変える（サーバー側の回転。PlayerCommands.rotate）。 */
+    public suspend fun look(yaw: Float, pitch: Float)
+
+    /** サーバーから見た状態（エージェント経由の query ステップ）。エージェントが無ければ UnsupportedCapabilityException。 */
+    public suspend fun state(): PlayerSnapshot
 
     /** 指定の位置へテレポートする。 */
     public suspend fun teleport(location: Location)

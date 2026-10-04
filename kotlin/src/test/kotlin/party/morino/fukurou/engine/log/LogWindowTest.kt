@@ -59,7 +59,7 @@ class LogWindowTest {
     }
 
     @Test
-    @DisplayName("Mark, skip and lineRange follow the Python window")
+    @DisplayName("Mark, skip and lineRange track the window position")
     fun markSkipLineRange() {
         append("before\n")
         val window = LogWindow(log)

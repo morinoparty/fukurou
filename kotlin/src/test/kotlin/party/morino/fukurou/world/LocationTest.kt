@@ -7,7 +7,7 @@ import org.junit.jupiter.api.assertThrows
 
 class LocationTest {
     @Test
-    @DisplayName("Command args drop trailing zeros like Python's :g")
+    @DisplayName("Command args drop trailing zeros")
     fun commandArgs() {
         assertEquals("0.5 -49 0.5 0 30", Location(0.5, -49.0, 0.5, yaw = 0f, pitch = 30f).toCommandArgs())
         assertEquals("10 64 -8.5", Location(10.0, 64.0, -8.5).toCommandArgs())

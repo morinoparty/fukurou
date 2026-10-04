@@ -1,6 +1,6 @@
 package party.morino.fukurou.engine.client
 
-/** クライアントの options.txt（runner/client.py:12-25 の CLIENT_OPTIONS をそのまま）。 */
+/** クライアントの options.txt。 */
 internal object ClientOptions {
     /**
      * 初回起動の案内画面やポーズを抑止し、GUI の大きさを固定するクライアント設定。

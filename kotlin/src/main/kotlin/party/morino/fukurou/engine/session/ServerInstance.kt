@@ -63,6 +63,15 @@ import party.morino.fukurou.result.output.ArtifactLayout
 import party.morino.fukurou.result.output.HarnessLog
 import party.morino.fukurou.result.output.ResultIds
 import party.morino.fukurou.result.output.StatusMapper
+import kotlinx.serialization.json.JsonElement
+import net.kyori.adventure.key.Key as AdventureKey
+import party.morino.fukurou.engine.agent.AgentAccess
+import party.morino.fukurou.engine.java.ServerJavaResolver
+import party.morino.fukurou.event.ServerEvents
+import party.morino.fukurou.state.BlockSnapshot
+import party.morino.fukurou.state.EntityQuery
+import party.morino.fukurou.state.EntitySnapshot
+import party.morino.fukurou.state.WorldSnapshot
 import party.morino.fukurou.server.CommandCheck
 import party.morino.fukurou.server.CommandFailedError
 import party.morino.fukurou.server.CommandResponse
@@ -95,9 +104,10 @@ import kotlin.io.path.isRegularFile
 import kotlin.reflect.KClass
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /**
- * 起動済みのサーバー（GameServer の実装、run/session.py:39-300 GameSession と suite_run.py の進行の移植）。
+ * 起動済みのサーバー（GameServer の実装。セッションの開閉とテストの進行を受け持つ）。
  *
  * 1 インスタンス = 1 run ディレクトリ = 1 つの result.json。fresh-server で作り直しても同じインスタンスのまま
  * セッション（sessions[]）を進める。プレイヤー（PlayerSession）もセッションをまたいで同じインスタンスを使う。
@@ -180,6 +190,10 @@ internal class ServerInstance private constructor(
     @Volatile
     private var plugins: List<ResolvedPlugin>? = null
 
+    /** 最初の start で決めたサーバーの java（fukurou.serverJava の解決結果）。 */
+    @Volatile
+    private var serverJava: Path? = null
+
     /** このセッションで既にテストを走らせたか（fresh-server の判定）。 */
     @Volatile
     private var sessionRanTest = false
@@ -244,7 +258,7 @@ internal class ServerInstance private constructor(
     // --- 起動 --------------------------------------------------------------------
 
     /**
-     * サーバーを起動し、準備完了（レディネス + プラグインの有効化）まで待つ（session.py:84 start + suite_run.py:231 _setup）。
+     * サーバーを起動し、準備完了（レディネス + プラグインの有効化）まで待つ。
      *
      * 失敗は run の失敗（setup / server-start）として記録してから投げる。呼び出し側は記録し直さなくてよい。
      */
@@ -252,14 +266,18 @@ internal class ServerInstance private constructor(
         check(!closed) { "$resultId was stopped" }
         var phase = RunFailurePhase.SETUP
         try {
-            // Xvfb などが無いホストでは、ダウンロードより前に止める
+            // setsid などが無いホストでは、ダウンロードより前に止める。Xvfb などはプレイヤーを宣言したときだけ要る
+            // （宣言せずに後から join するときは、クライアントを起動する直前に確かめる）
             HostCheck.ensure(fukurou.config)
+            if (definition.players.isNotEmpty()) HostCheck.ensureClients()
             if (!fukurou.config.acceptEula) throw SetupException(EULA_MESSAGE)
             // 能力と設定の整合は、ダウンロードや起動より前に確かめる（プラグインを入れられない種類など）
             validate(platform.bind(this))
             val resolved = resolvePlugins()
             phase = RunFailurePhase.SERVER_START
             beginSession(kind)
+            // エージェントへの接続は startTimeout の残り時間で待つ（v3 設計 §1.1）
+            val bootStarted = TimeSource.Monotonic.markNow()
             val started = ServerBoot.boot(
                 platform = platform,
                 name = resultId,
@@ -271,7 +289,7 @@ internal class ServerInstance private constructor(
                     // 参加者の数だけでは足りない利用（後から join する）もあるので、Paper の既定を下限にする
                     maxPlayers = maxOf(definition.players.size, MIN_MAX_PLAYERS),
                     serverHeap = definition.serverHeap,
-                    serverJava = fukurou.config.serverJava,
+                    serverJava = checkNotNull(serverJava) { "server java is resolved with the plugins" },
                 ),
                 prepare = dirs::wipeServerDir,
                 logFile = serverLogFile,
@@ -283,6 +301,9 @@ internal class ServerInstance private constructor(
             serverWindow = LogWindow(started.logFile)
             capabilities = platform.bind(this)
             checkPlugins(resolved)
+            // サーバー内エージェント（v3）に接続する。種類がエージェントを入れなければ何もしない
+            val agentBudget = (definition.startTimeout - bootStarted.elapsedNow()).coerceAtLeast(MIN_AGENT_CONNECT)
+            agentAccess.connect(started.provisioned.agentEndpoint, agentBudget)
             harness.info("session $sessionIndex (${kind.name.lowercase()}): $resultId is ready at ${started.provisioned.joinAddress}")
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
@@ -298,8 +319,10 @@ internal class ServerInstance private constructor(
         }
     }
 
-    /** 宣言したプレイヤーのクライアントを先にインストールする（suite_run.py:277、全員の参加より前）。 */
+    /** 宣言したプレイヤーのクライアントを先にインストールする（全員の参加より前）。 */
     suspend fun install(profiles: List<PlayerProfile>) {
+        // Xvfb などが無いホストでは、クライアントのダウンロードより前に止める
+        if (profiles.isNotEmpty()) HostCheck.ensureClients()
         profiles.forEach { playerSession(it).ensureInstalled() }
     }
 
@@ -336,7 +359,10 @@ internal class ServerInstance private constructor(
         plugins?.let { return it }
         val resolved = fukurou.pluginResolver.resolve(definition.plugins)
         resolved.forEach { harness.info("plugin ${it.file} (${it.role}${it.source?.let { source -> ", $source" }.orEmpty()})") }
-        JavaCheck.check(fukurou.mojang, type.minecraftVersion, fukurou.config.serverJava, resolved, harness::warn)
+        // fukurou.serverJava（auto / current / パス）から実際の java を決める（v3 設計 §3）
+        val java = ServerJavaResolver.resolve(fukurou, type.minecraftVersion, resolved, harness::info, harness::warn)
+        JavaCheck.check(fukurou.mojang, type.minecraftVersion, java, resolved, harness::warn)
+        serverJava = java
         plugins = resolved
         return resolved
     }
@@ -513,6 +539,26 @@ internal class ServerInstance private constructor(
     /** 種類が提供する能力。 */
     override fun <C : Capability> capability(kind: KClass<C>): C? = capabilities.get(kind)
 
+    // --- サーバー内エージェント（v3 設計 §2.1） ------------------------------------------------
+
+    /** エージェントへの接続と、状態の取得・イベント・execute。 */
+    val agentAccess: AgentAccess = AgentAccess(this)
+
+    override suspend fun block(at: BlockPos, world: AdventureKey): BlockSnapshot = agentAccess.block(at, world)
+
+    override suspend fun entities(query: EntityQuery): List<EntitySnapshot> = agentAccess.entities(query)
+
+    override suspend fun worldState(world: AdventureKey): WorldSnapshot = agentAccess.worldState(world)
+
+    override suspend fun currentTick(): Long = agentAccess.currentTick()
+
+    override suspend fun awaitTicks(ticks: Int): Unit = agentAccess.awaitTicks(ticks)
+
+    override val events: ServerEvents get() = agentAccess.events
+
+    override suspend fun execute(task: String, args: JsonElement?, timeout: Duration): JsonElement =
+        agentAccess.execute(task, args, timeout)
+
     // --- ログ ------------------------------------------------------------------------
 
     /** サーバーログの現在の末尾。 */
@@ -567,7 +613,7 @@ internal class ServerInstance private constructor(
     // --- テストの進行（JUnit 拡張と test { } が共有する） ----------------------------------
 
     /**
-     * テストの前の準備（suite_run.py:320-335）: 必要なら fresh-server に作り直し、汚れた・死んだクライアントを起動し直す。
+     * テストの前の準備: 必要なら fresh-server に作り直し、汚れた・死んだクライアントを起動し直す。
      *
      * 失敗は run の失敗として記録し、未実行のテストを skipped にしてから投げる。
      *
@@ -584,7 +630,7 @@ internal class ServerInstance private constructor(
             } catch (error: Throwable) {
                 if (error is CancellationException || isShuttingDown()) throw error
                 // 再参加の失敗は join が run の失敗（client-join）として記録済みだが、deadReason は付けていない。
-                // 付けないと以後のテストが参加者の欠けたセッションで走ってしまうので、Python と同じくここで打ち切る
+                // 付けないと以後のテストが参加者の欠けたセッションで走ってしまうので、ここで打ち切る
                 val reason = deadReason ?: "fresh-server restart failed: ${StatusMapper.messageOf(error)}"
                 abort(reason)
                 throw error
@@ -629,7 +675,7 @@ internal class ServerInstance private constructor(
     fun isShuttingDown(): Boolean = isInterrupted || ProcessRegistry.isShuttingDown
 
     /**
-     * 今のセッションを閉じ、まっさらなサーバーで次のセッションを始めて全員を再参加させる（session.py:143-156）。
+     * 今のセッションを閉じ、まっさらなサーバーで次のセッションを始めて全員を再参加させる。
      *
      * 止めた後（メモリ予算による退避の後）に呼んでもよい。
      */
@@ -682,7 +728,7 @@ internal class ServerInstance private constructor(
     }
 
     /**
-     * テストを閉じる（suite_run.py:418-431 _finish_test）: 失敗なら全員の画面を撮り、ログ範囲を記録して testFinished を送る。
+     * テストを閉じる: 失敗なら全員の画面を撮り、ログ範囲を記録して testFinished を送る。
      * サーバーが死んでいれば run の失敗（server）にし、未実行のテストを skipped にする。
      *
      * @param error テストが投げた例外（成功なら null）
@@ -696,10 +742,13 @@ internal class ServerInstance private constructor(
             recorder.testSkipped(run.testId, SKIP_INTERRUPTED)
             return@withContext TestOutcome(TestStatus.SKIPPED, skipReason = SKIP_INTERRUPTED)
         }
+        // 押したままのキーとボタンを離し、イベントの記録器を閉じる（v3）
+        sessions.values.forEach { it.releaseHeldInput() }
+        agentAccess.closeRecorders()
         try {
             val died = deadClient()
             val outcome = if (error is CancellationException && error !is TimeoutCancellationException) {
-                // 取り消された（中断された）テストは走り切れなかったので、契約どおり skipped にする（suite_run.py:352）
+                // 取り消された（中断された）テストは走り切れなかったので、契約どおり skipped にする
                 TestOutcome(TestStatus.SKIPPED, skipReason = SKIP_INTERRUPTED)
             } else {
                 StatusMapper.outcome(
@@ -723,7 +772,7 @@ internal class ServerInstance private constructor(
             outcome
         } finally {
             ActiveTests.finish(run)
-            // サーバーの死亡は以後のテストを止める（suite_run.py:297-303）
+            // サーバーの死亡は以後のテストを止める
             val reason = StatusMapper.serverDiedReason(run.testId)
             val died = serverError?.let { RunFailure(RunFailurePhase.SERVER, "$reason: ${it.message}") }
                 ?: StatusMapper.runFailure(error, run.testId)
@@ -788,7 +837,7 @@ internal class ServerInstance private constructor(
         return withContext(scope.copy(phase = StepPhase.FIXTURE, fixture = name)) { block() }
     }
 
-    /** サーバーログと参加中のクライアントログにテストの開始位置を付ける（session.py:212 mark_logs）。 */
+    /** サーバーログと参加中のクライアントログにテストの開始位置を付ける。 */
     private fun markLogs() {
         val windows = mutableListOf<Pair<String, LogWindow>>()
         serverWindow?.let { windows += ArtifactLayout.sessionServerLog(sessionIndex) to it }
@@ -809,7 +858,7 @@ internal class ServerInstance private constructor(
     // --- 停止 --------------------------------------------------------------------
 
     /**
-     * 今のセッションを閉じる: クライアント → Xvfb → サーバーの順に止め、ログを回収して sessionFinished を送る（session.py:248-274）。
+     * 今のセッションを閉じる: クライアント → Xvfb → サーバーの順に止め、ログを回収して sessionFinished を送る。
      *
      * 最後まで進めてから最初の失敗を投げる。
      */
@@ -818,6 +867,8 @@ internal class ServerInstance private constructor(
         val current = boot
         boot = null
         val errors = mutableListOf<Throwable>()
+        // エージェントの接続はサーバーより先に閉じる（停止で切れた接続を死亡と取り違えない）
+        runCatching { agentAccess.disconnect() }.onFailure { harness.error("could not close the agent connection", it) }
         // 参加を確認できなかったクライアントや、起動の途中で失敗したもの（ディスプレイだけ残った）も止める
         for (player in sessions.values) {
             runCatching { player.shutdown() }.onFailure { errors += it; harness.error("could not stop ${player.name}", it) }
@@ -909,7 +960,7 @@ internal class ServerInstance private constructor(
 
     /**
      * JVM の終了の後半。ProcessRegistry がプロセスを止めた後に呼ぶ。
-     * ログを回収してセッションを閉じ（Python の _teardown → GameSession.stop と同じ）、result.json を確定する。
+     * ログを回収してセッションを閉じ、result.json を確定する。
      */
     fun finishInterrupt() {
         if (!isInterrupted) return
@@ -931,21 +982,21 @@ internal class ServerInstance private constructor(
 
     /** 生成と定数。 */
     companion object {
-        /** EULA に同意していないときのメッセージ（suite_run.py:45、Kotlin 版の渡し方に合わせる）。 */
+        /** EULA に同意していないときのメッセージ（Kotlin 版の渡し方に合わせる）。 */
         const val EULA_MESSAGE: String =
             "fukurou downloads and runs the Minecraft server and clients, which requires accepting the " +
                 "Minecraft EULA (https://aka.ms/MinecraftEULA). Pass -Pfukurou.acceptEula=true (or set FUKUROU_ACCEPT_EULA=true) to accept it."
 
-        /** プラグインの有効化を待つ時間（session.py:31）。起動完了の時点で有効化は終わっているはず。 */
+        /** プラグインの有効化を待つ時間。起動完了の時点で有効化は終わっているはず。 */
         val PLUGIN_CHECK_TIMEOUT: Duration = 15.seconds
 
-        /** dirty の理由: passed で終わらなかったテストで入力を受けた（session.py:34）。 */
+        /** dirty の理由: passed で終わらなかったテストで入力を受けた。 */
         const val DIRTY_INPUT_REASON: String = "the previous test left keys pressed or a screen open"
 
-        /** dirty の理由: 置き去りにしたレーンがまだ操作していた（session.py:36）。 */
+        /** dirty の理由: 置き去りにしたレーンがまだ操作していた。 */
         const val DIRTY_STRANDED_REASON: String = "a lane of the previous test was still driving the client after its timeout"
 
-        /** 中断されたテストの skipReason（suite_run.py:59）。 */
+        /** 中断されたテストの skipReason。 */
         const val SKIP_INTERRUPTED: String = "interrupted"
 
         /** コマンドのステップの action。 */
@@ -953,6 +1004,9 @@ internal class ServerInstance private constructor(
 
         /** max-players の下限（Paper の既定と同じ）。 */
         private const val MIN_MAX_PLAYERS = 20
+
+        /** 起動に startTimeout を使い切ったときでも、エージェントへの接続に残す最低の待ち時間。 */
+        private val MIN_AGENT_CONNECT: Duration = 10.seconds
 
         /** ミリ秒 → 秒。 */
         private const val MILLIS_PER_SECOND = 1000.0
@@ -974,7 +1028,7 @@ internal class ServerInstance private constructor(
             val layout = ArtifactLayout(fukurou.config.outDir, runId)
             layout.prepare()
             // run id は実行ごとに同じなので、前の JVM（keepWork や強制終了）が残したクラッシュレポートやログを
-            // この run のものとして回収しないよう、作業ディレクトリも最初に空にする（suite_run.py:483 _reset_work_dir）
+            // この run のものとして回収しないよう、作業ディレクトリも最初に空にする
             SessionDirs(fukurou.config.workDir, runId).delete()
             val harness = HarnessLog(layout.harnessLogFile)
             if (runId != candidate) harness.warn("result id $candidate is already used in this JVM; writing $runId")

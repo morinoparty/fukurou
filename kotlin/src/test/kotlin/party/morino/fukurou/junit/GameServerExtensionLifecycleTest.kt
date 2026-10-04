@@ -158,6 +158,18 @@ class GameServerExtensionLifecycleTest {
     }
 
     @Test
+    @DisplayName("runs a class without players when only the client tools are missing and missingHost is skip")
+    fun missingClientToolsWithoutPlayers() {
+        val config = FakeEnvironment.fukurou.config.copy(missingHost = MissingHostPolicy.SKIP)
+        FakeEnvironment.fukurou = Fukurou(config)
+        // サーバーの道具はそろい、Xvfb などだけが無いホスト
+        HostCheck.probe = { clients -> if (clients) "Xvfb is not on PATH (package xvfb)" else null }
+        val summary = execute(selectClass(FakeArenaTests::class.java))
+        assertEquals(0, summary.containersAbortedCount)
+        assertTrue(summary.testsSucceededCount > 0, summary.failures.joinToString { it.exception.toString() })
+    }
+
+    @Test
     @DisplayName("resolves each extension by type and refuses an ambiguous GameServer parameter")
     fun twoServers() {
         val summary = execute(selectClass(TwinArenaTests::class.java))

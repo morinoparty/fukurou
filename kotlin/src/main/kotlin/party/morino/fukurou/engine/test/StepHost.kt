@@ -33,13 +33,13 @@ internal interface StepHost {
     fun warn(message: String)
 
     /**
-     * 参加中のクライアントがすべて生きているかを確かめる（scenario_runner.py:114 check_players_alive）。
+     * 参加中のクライアントがすべて生きているかを確かめる。
      *
      * @throws ClientDiedException 死んだクライアントがある
      */
     fun checkClientsAlive()
 
-    /** 参加中のクライアントのうち死んでいるものの例外。全員生きていれば null（step_executor.py:124 _dead_client）。 */
+    /** 参加中のクライアントのうち死んでいるものの例外。全員生きていれば null。 */
     fun deadClient(): ClientDiedException?
 
     /** ステップがサーバーの死亡（RCON 不通・プロセスの終了）を見た。以後のテストは走らない。 */

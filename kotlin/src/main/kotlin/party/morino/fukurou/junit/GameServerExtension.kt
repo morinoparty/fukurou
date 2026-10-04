@@ -128,9 +128,10 @@ public abstract class GameServerExtension :
      * リースを取得（無ければ作って stub の result.json を書き）、サーバーを起動して宣言したプレイヤーを参加させる。
      */
     final override fun beforeAll(context: ExtensionContext) {
-        // Xvfb などが無いホストで skip を選んだなら、run ディレクトリも作らずにクラスごと飛ばす
+        // ホストの道具が無く skip を選んだなら、run ディレクトリも作らずにクラスごと飛ばす。
+        // Xvfb などのクライアントの道具は、プレイヤーを宣言したクラスだけが要る
         if (fukurou().config.missingHost == MissingHostPolicy.SKIP) {
-            HostCheck.problemMessage()?.let { throw TestAbortedException(it) }
+            HostCheck.problemMessage(clients = declared.isNotEmpty())?.let { throw TestAbortedException(it) }
         }
         val lease = LeaseRegistry.leaseFor(this, context)
         // 宣言は最初のインスタンスのものに固定する。クラスごとに違うと参加者が決まらない

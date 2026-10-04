@@ -13,7 +13,7 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 /**
- * ログファイルの「ある時点から後」だけを増分で読むウィンドウ（runner/log_window.py:24-110）。
+ * ログファイルの「ある時点から後」だけを増分で読むウィンドウ。
  *
  * 最後の改行までしか読まないので、書き込み中の行やマルチバイト文字の途中は次回に回る。
  * inode が変わった・ファイルが短くなったときは先頭から数え直す。複数のレーンから同時に読まれるのでロックで直列にする。
@@ -134,7 +134,7 @@ internal class LogWindow(val path: Path) {
         // 行の途中（書き込み中の行やマルチバイト文字の途中）は次回に回す
         val cut = data.lastIndexOf(NEWLINE)
         if (cut < 0) return
-        // 改行ごとに切り分けて行として足す。不正な UTF-8 は置換文字にする（Python の errors="replace"）
+        // 改行ごとに切り分けて行として足す。不正な UTF-8 は置換文字にする
         var start = 0
         var newlines = 0
         for (i in 0..cut) {
@@ -186,7 +186,7 @@ internal class LogWindow(val path: Path) {
         text.setLength(0)
     }
 
-    /** 先頭から数え直す（log_window.py _reset）。 */
+    /** 先頭から数え直す。 */
     private fun reset() {
         readPos = LogPosition()
         markPos = LogPosition()

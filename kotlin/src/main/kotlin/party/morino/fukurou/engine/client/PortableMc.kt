@@ -10,7 +10,7 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermissions
 
-/** バニラクライアントの起動に使う PortableMC の取得（runner/portablemc.py）。 */
+/** バニラクライアントの起動に使う PortableMC の取得。 */
 internal object PortableMc {
     /** PortableMC はバージョンとチェックサムを固定し、改ざんされたバイナリを実行しないようにする。 */
     const val VERSION: String = "5.0.4"

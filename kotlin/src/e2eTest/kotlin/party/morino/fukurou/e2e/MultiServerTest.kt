@@ -20,7 +20,7 @@ import kotlin.time.Duration.Companion.seconds
  * 1 つのテストクラスに 2 種類の拡張（LobbyArena と DuelArena）を登録し、本物の Paper を 2 台同時に動かす。
  * Xvfb などが要るので CI の kotlin-e2e ジョブだけで実行する（check には含めない）。
  *
- * 拡張が 2 つあると GameServer の引数はどちらか決まらないので、拡張の型で受け取る（§5.4）。
+ * 拡張が 2 つあると GameServer の引数はどちらか決まらないので、拡張の型で受け取る。
  * 1 件のテストが両方のサーバーで記録されるので、result.json は label ごとに 1 つ（lobby と duel）でき、それぞれ 1 件になる。
  */
 @ExtendWith(LobbyArena::class)
@@ -90,7 +90,7 @@ class MultiServerTest {
         outsider.assertNoChat(pattern, after = outsiderMark)
     }
 
-    /** 足場を置き、昼・晴れにする（examples/fukurou.yml の platform と同じ考え方）。 */
+    /** 足場を置き、昼・晴れにする（スクリーンショットが奈落や夜空を写さないように）。 */
     private suspend fun prepareStage(server: GameServer, block: String) {
         server.fill(BlockPos(-3, -61, -3), BlockPos(3, -61, 3), block)
         server.time(6000)

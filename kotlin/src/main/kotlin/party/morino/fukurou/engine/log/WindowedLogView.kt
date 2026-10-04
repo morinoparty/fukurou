@@ -32,7 +32,7 @@ internal class WindowedLogView(
         val current = window()
         val text = current.read(after)
         val firstLine = current.firstLineNumber(after)
-        // Python は最初の一致だけを報告していたが、一致した行をすべて（行ごとに 1 回）挙げる
+        // 最初の一致だけでなく、一致した行をすべて（行ごとに 1 回）挙げる
         val matches = pattern.multiline().findAll(text)
             .map { toLogMatch(text, firstLine, it) }
             .distinctBy { it.lineNumber }

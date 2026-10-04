@@ -3,7 +3,7 @@ package party.morino.fukurou.result.model.run
 import kotlinx.serialization.Serializable
 
 /**
- * テストのステータスごとの件数（model.py summarize_tests）。
+ * テストのステータスごとの件数。
  *
  * @property total 全件
  * @property passed passed の件数

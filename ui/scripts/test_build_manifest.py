@@ -54,6 +54,33 @@ class ArtifactNameTest(unittest.TestCase):
                 self.assertEqual(build_manifest.version_from_artifact_name(name), version)
 
 
+class GeneratorVersionTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def version_of(self, text):
+        path = self.tmp / "gradle.properties"
+        path.write_text(text, encoding="utf-8")
+        return build_manifest.generator_version(path)
+
+    def test_reads_the_repository_gradle_properties(self):
+        # 既定ではリポジトリの kotlin/gradle.properties の fukurouVersion を読む
+        version = build_manifest.generator_version()
+        self.assertRegex(version, r"^\d+\.\d+\.\d+")
+        self.assertNotEqual(version, build_manifest.FALLBACK_VERSION)
+
+    def test_properties_syntax(self):
+        self.assertEqual(self.version_of("a=b\nfukurouVersion=3.1.0\n"), "3.1.0")
+        self.assertEqual(self.version_of("  fukurouVersion = 3.2.0-rc.1  \n"), "3.2.0-rc.1")
+        # コメント行と似た名前のキーは読まない
+        self.assertEqual(self.version_of("# fukurouVersion=9.9.9\n! fukurouVersion=8.8.8\nfukurouVersionX=7\n"), "0.0.0")
+
+    def test_fallback(self):
+        self.assertEqual(self.version_of("fukurouVersion=\n"), build_manifest.FALLBACK_VERSION)
+        self.assertEqual(build_manifest.generator_version(self.tmp / "missing.properties"), build_manifest.FALLBACK_VERSION)
+
+
 class BuildSiteTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())

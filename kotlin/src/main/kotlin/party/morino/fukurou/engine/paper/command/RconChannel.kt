@@ -17,7 +17,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * RCON のコマンド経路（server/rcon.py、server/process.py:86-94）。
+ * RCON のコマンド経路。
  *
  * コマンドごとに TCP 接続を開いて認証し、1 つのコマンドを送って 1 つの応答を読む。
  * 接続を共有しないので、複数のレーンから同時に呼んでも安全。
@@ -25,7 +25,7 @@ import kotlin.time.Duration.Companion.seconds
  * @property host 接続先（127.0.0.1）
  * @property port rcon.port
  * @property password rcon.password
- * @property timeout 接続と読み取りのそれぞれの待ち時間（rcon.py:21 と同じ 10 秒）
+ * @property timeout 接続と読み取りのそれぞれの待ち時間（既定 10 秒）
  */
 internal class RconChannel(
     private val host: String,
@@ -79,7 +79,7 @@ internal class RconChannel(
             }
             output.write(request)
             output.flush()
-            // Python 版と同じく応答は 1 パケットだけ読む
+            // 応答は 1 パケットだけ読む
             return RconCodec.decode(input).payload
         } catch (error: IOException) {
             // プロセスの生死はここでは分からないので、エンジン側で "is not running" を補う
@@ -93,7 +93,7 @@ internal class RconChannel(
     override fun toString(): String = "RconChannel($host:$port)"
 
     private companion object {
-        /** ログインのリクエスト ID（rcon.py と同じく 1 から数える）。 */
+        /** ログインのリクエスト ID（1 から数える）。 */
         private const val LOGIN_ID = 1
 
         /** コマンドのリクエスト ID。 */

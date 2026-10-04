@@ -1,7 +1,7 @@
 package party.morino.fukurou.engine.paper.capability
 
 /**
- * ある時点のサーバーログから読み取った、プラグインの状態（server/plugin_checks.py:63-80）。純粋。
+ * ある時点のサーバーログから読み取った、プラグインの状態。純粋。
  *
  * @property plugins 確認するプラグイン
  * @property enabled plugins と同じ順の、有効化できたか
@@ -27,7 +27,7 @@ internal class PluginLogState private constructor(
             .filter { (plugin, ok) -> !ok && errors.none(plugin::ownsError) }
             .map { (plugin, _) -> "${plugin.name} was not enabled (no '${plugin.enablingMarker}' in the server log)" }
 
-    /** problems を 1 行にしたもの（Python の PluginCheckError の文面）。問題が無ければ null。 */
+    /** problems を 1 行にしたもの（harness.log に書く説明）。問題が無ければ null。 */
     fun failureMessage(): String? = problems().takeIf { it.isNotEmpty() }?.joinToString("; ", prefix = "plugin check failed: ")
 
     companion object {

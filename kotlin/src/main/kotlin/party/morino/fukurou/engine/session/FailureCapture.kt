@@ -9,12 +9,12 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * 失敗したテストの各プレイヤーの画面を failure.png として残す（run/suite_run.py:562-584）。
+ * 失敗したテストの各プレイヤーの画面を failure.png として残す。
  *
  * 診断のための撮影なので、撮れなくても（ウィンドウが無い等）本来の失敗を隠さず警告に留める。
  */
 internal object FailureCapture {
-    /** 失敗時の撮影ではウィンドウを長く待たない（suite_run.py:52 FAILURE_WINDOW_TIMEOUT）。 */
+    /** 失敗時の撮影ではウィンドウを長く待たない。 */
     val WINDOW_TIMEOUT: Duration = 10.seconds
 
     /**

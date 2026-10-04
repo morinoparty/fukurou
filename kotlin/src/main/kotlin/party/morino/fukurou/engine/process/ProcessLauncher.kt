@@ -21,7 +21,7 @@ internal object ProcessLauncher {
      * @param logFile 出力の書き出し先
      * @param env 追加の環境変数
      * @param warn 警告の書き出し先（harness.log）
-     * @param append true なら logFile を空にせず追記する（Xvfb の再試行で前の試行の出力を残すため。Python の "ab"）
+     * @param append true なら logFile を空にせず追記する（Xvfb の再試行で前の試行の出力を残すため）
      */
     fun launch(
         name: String,
@@ -40,7 +40,7 @@ internal object ProcessLauncher {
             .directory(cwd.toFile())
             .redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
             .redirectErrorStream(true)
-            // Redirect.to はファイルを空にしてから書く（Python の "wb" と同じ）。append なら "ab" と同じく追記する
+            // Redirect.to はファイルを空にしてから書く。append なら末尾に追記する
             .redirectOutput(
                 if (append) ProcessBuilder.Redirect.appendTo(logFile.toFile()) else ProcessBuilder.Redirect.to(logFile.toFile()),
             )

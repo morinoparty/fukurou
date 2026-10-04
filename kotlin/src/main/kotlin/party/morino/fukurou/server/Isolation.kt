@@ -8,12 +8,12 @@ import kotlin.time.Duration.Companion.seconds
 /** テスト同士を隔離する方法。 */
 public sealed interface Isolation {
     /**
-     * isolation.py:70 の reset_commands 相当を各テストの前に送る（既定）。種類の ResetPlanner が必要。
+     * リセットのコマンド列を各テストの前に送る（既定）。種類の ResetPlanner が必要。
      *
      * @property arena 空気で埋め直す領域。null ならブロックに触れない（スイートの arena: false）
      * @property gamemode リセット時に設定するゲームモード
      * @property settle リセット後にクライアントがブロック更新を受け取るまで待つ時間
-     * @property spawns プレイヤーごとの初期位置。無ければ isolation.py:55 の既定のスロット
+     * @property spawns プレイヤーごとの初期位置。無ければ既定のスロット
      * @property normalizeView F3+D でチャットを消し、F5 で一人称に戻すか
      */
     public data class Reset(

@@ -3,7 +3,7 @@ package party.morino.fukurou.player
 /**
  * 参加前のプレイヤー。操作は持たず、GameServer.join で Player になる。
  *
- * 名前は ^[A-Za-z0-9_]{3,16}$ で、"server" は予約（scenario/model.py と同じ）。
+ * 名前は ^[A-Za-z0-9_]{3,16}$ で、"server" は予約。
  *
  * @property name プレイヤー名（オフラインモードのユーザー名）
  * @property op リセットのたびに op にするか

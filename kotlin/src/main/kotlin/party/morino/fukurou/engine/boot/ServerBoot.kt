@@ -23,7 +23,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 /**
- * 1 セッション分のサーバーのプロセスとコマンド経路（server/process.py の ServerProcess、session.py:84 start の移植）。
+ * 1 セッション分のサーバーのプロセスとコマンド経路。
  *
  * 起動・準備完了の待ち・停止だけを受け持ち、何を送るか（Paper の "list" / "stop" など）は ServerPlatform が決める。
  *
@@ -39,7 +39,7 @@ internal class ServerBoot(
     val logFile: Path,
 ) {
     /**
-     * 穏やかに止める: 種類の停止要求 → 60 秒待つ → プロセスグループを TERM（20 秒）→ KILL（server/process.py:103）。
+     * 穏やかに止める: 種類の停止要求 → 60 秒待つ → プロセスグループを TERM（20 秒）→ KILL。
      */
     suspend fun stop(platform: ServerPlatform) {
         try {
@@ -65,16 +65,16 @@ internal class ServerBoot(
 
     /** 起動の手順と定数。 */
     companion object {
-        /** 停止の要求の後に待つ時間（server/process.py:103）。 */
+        /** 停止の要求の後に待つ時間。 */
         private val STOP_WAIT: Duration = 60.seconds
 
         /** TERM の後に待つ時間。 */
         private val STOP_GRACE: Duration = 20.seconds
 
-        /** 準備完了を確かめる間隔（server/process.py:72-84）。 */
+        /** 準備完了を確かめる間隔。 */
         private val POLL: Duration = 1.seconds
 
-        /** 起動に失敗したときに harness.log へ出す末尾の行数（runner/process.py:28 tail_log）。 */
+        /** 起動に失敗したときに harness.log へ出す末尾の行数。 */
         private const val TAIL_LINES = 30
 
         /**
@@ -160,7 +160,7 @@ internal class ServerBoot(
             }
         }
 
-        /** ログの末尾（runner/process.py:28 tail_log）。 */
+        /** ログの末尾。 */
         private fun tail(logFile: Path): String =
             runCatching { String(Files.readAllBytes(logFile), Charsets.UTF_8).trimEnd().lines().takeLast(TAIL_LINES).joinToString("\n") }
                 .getOrDefault("(no output)")

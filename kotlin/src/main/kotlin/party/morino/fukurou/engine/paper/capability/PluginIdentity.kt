@@ -3,7 +3,7 @@ package party.morino.fukurou.engine.paper.capability
 import party.morino.fukurou.spi.plugin.ResolvedPlugin
 
 /**
- * サーバーログの行をプラグインに結び付けるための情報（server/plugin_checks.py:29-60）。純粋。
+ * サーバーログの行をプラグインに結び付けるための情報。純粋。
  *
  * @property name plugin.yml / paper-plugin.yml の name
  * @property fileName plugins/ に置いた jar のファイル名（読み込み失敗のログはファイル名で出る）

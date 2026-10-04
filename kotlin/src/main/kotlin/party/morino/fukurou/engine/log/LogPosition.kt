@@ -1,7 +1,7 @@
 package party.morino.fukurou.engine.log
 
 /**
- * ファイル内の位置。offset バイト目までに newlines 個の改行がある（log_window.py _Position）。
+ * ファイル内の位置。offset バイト目までに newlines 個の改行がある。
  *
  * @property offset ファイル先頭からのバイト数
  * @property newlines offset までの改行の数

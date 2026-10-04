@@ -7,13 +7,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * 生きている外部プロセスの一覧と、JVM に 1 つだけのシャットダウンフック（cli.py:305,348）。
+ * 生きている外部プロセスの一覧と、JVM に 1 つだけのシャットダウンフック。
  *
  * Gradle のキャンセルや SIGTERM で JVM が終わるとき、まず止める前の処理（実行中のテストを interrupted として記録する）を呼び、
  * 次にクライアント → Xvfb → サーバーの順に 5 秒の猶予で止め、最後に止めた後の処理（ログの回収と result.json の確定）を呼ぶ。
  *
  * シャットダウンフックの間も JUnit のスレッドは動き続ける。先にプロセスを止めると、実行中のステップがサーバーや
- * クライアントの死亡を見て、中断ではなく「サーバーが死んだ」と記録してしまう（Python は KeyboardInterrupt が先に届く）。
+ * クライアントの死亡を見て、中断ではなく「サーバーが死んだ」と記録してしまう。
  */
 internal object ProcessRegistry {
     /**

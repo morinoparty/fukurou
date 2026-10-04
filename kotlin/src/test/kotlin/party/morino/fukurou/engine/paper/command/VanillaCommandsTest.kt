@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import party.morino.fukurou.world.BlockPos
 import party.morino.fukurou.world.Location
 import party.morino.fukurou.world.Worlds
@@ -42,5 +43,16 @@ class VanillaCommandsTest {
         assertTrue(echo.containsMatchIn("[12:00:01 INFO]: Alice issued server command: /st :thinking-face:"))
         assertTrue(VanillaCommands.joined("Al").containsMatchIn("Al joined the game"))
         assertTrue(!VanillaCommands.joined("Al").containsMatchIn("Hal joined the game"))
+    }
+
+    @Test
+    @DisplayName("Rotate teleports the player in place with trimmed yaw and pitch")
+    fun rotate() {
+        val call = VanillaCommands.rotate("Alice", 90f, -45.5f)
+        assertEquals("execute as Alice at @s run tp @s ~ ~ ~ 90 -45.5", call.command)
+        assertEquals("Alice", call.player)
+        assertEquals("execute as Bob at @s run tp @s ~ ~ ~ 0 0.1", VanillaCommands.rotate("Bob", -0f, 0.1f).command)
+        assertThrows<IllegalArgumentException> { VanillaCommands.rotate("Alice", Float.NaN, 0f) }
+        assertThrows<IllegalArgumentException> { VanillaCommands.rotate("Alice", 0f, Float.POSITIVE_INFINITY) }
     }
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """fukurou の artifact 群から、ビューアで閲覧できる静的サイトを組み立てる。
 
-GitHub の標準 ubuntu ランナーで uv なしに動かすため、標準ライブラリだけで書く。
+GitHub の標準 ubuntu ランナーで追加のインストールなしに動かすため、標準ライブラリだけで書く。
 入力は docs/contract.md の「Per-version output directory」、
 出力は同じく「Site」の節に従う。
 """
@@ -22,7 +22,7 @@ MANIFEST_SCHEMA_VERSION = 2
 # 読み取れる result.json の schemaVersion。それ以外は "unsupported" の run として扱う（v1 の読み取りアダプタは載せない）
 RESULT_SCHEMA_VERSION = 2
 GENERATOR_NAME = "fukurou-ui"
-# pyproject.toml が読めないとき（スクリプトだけ持ち出された場合など）の版
+# kotlin/gradle.properties が読めないとき（スクリプトだけ持ち出された場合など）の版
 FALLBACK_VERSION = "0.0.0"
 # manifest.js で window に載せる変数名。ビューアはこれを最優先で読む
 MANIFEST_GLOBAL = "window.__FUKUROU_MANIFEST__"
@@ -36,7 +36,7 @@ TEST_STATUS_PRIORITY = ("error", "failed", "passed", "skipped")
 FAILURE_SHOT = "failure"
 # run の id はそのままディレクトリ名と URL に使うので、安全な文字だけに限る
 SAFE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
-# テストの id（シナリオファイルの stem）。ビューアのルートと tests/<id>/ のパスになるので契約と同じ規則で検査する
+# テストの id（JUnit のテストメソッドから決まる）。ビューアのルートと tests/<id>/ のパスになるので契約と同じ規則で検査する
 SAFE_TEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 # 契約で artifact のルートに置かれるディレクトリ。1件だけのダウンロードで平置きになったかの判定に使う
 CONTRACT_DIRS = ("tests", "logs", "crash-reports")
@@ -62,18 +62,23 @@ TRAILING_RUN_ID = re.compile(r"(?:^|[-/])([a-z][a-z0-9]*-\d+(?:\.\d+)+(?:-[A-Za-
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 
-def generator_version() -> str:
-    """リポジトリの pyproject.toml から fukurou の版を読む。ランナーと ui は同じタグで出すため。"""
-    pyproject = SCRIPT_DIR.parent.parent / "pyproject.toml"
+def generator_version(properties: Path | None = None) -> str:
+    """リポジトリの kotlin/gradle.properties の fukurouVersion から fukurou の版を読む。ライブラリと ui は同じタグで出すため。"""
+    properties = properties or SCRIPT_DIR.parent.parent / "kotlin" / "gradle.properties"
     try:
-        text = pyproject.read_text(encoding="utf-8")
+        text = properties.read_text(encoding="utf-8")
     except OSError:
         # 読めなくてもサイト生成自体は止めない
         return FALLBACK_VERSION
-    # tomllib は 3.11 以降にしか無いので、ubuntu-22.04 の 3.10 でも読めるよう [project] の version 行を直接探す
-    project = re.search(r"^\[project\]\s*$(.*?)(?=^\[|\Z)", text, re.M | re.S)
-    version = re.search(r'^version\s*=\s*"([^"]+)"', project.group(1), re.M) if project else None
-    return version.group(1) if version else FALLBACK_VERSION
+    for line in text.splitlines():
+        line = line.strip()
+        # Java の properties と同じく # と ! で始まる行はコメント。key=value と key = value のどちらも読む
+        if not line or line.startswith(("#", "!")):
+            continue
+        key, sep, value = line.partition("=")
+        if sep and key.strip() == "fukurouVersion" and value.strip():
+            return value.strip()
+    return FALLBACK_VERSION
 
 
 def utc_now() -> str:
@@ -454,7 +459,7 @@ def summarize_tests(tests: list[dict]) -> dict:
 def run_column(run: dict) -> str:
     """表の列見出しや failed-tests で run を指す短い名前。"<version>"、ラベル付きの run は "<version>/<label>"。"""
     version = run_version(run) or run["id"]
-    # 同じバージョンの run が複数あっても区別できるよう、ラベルがあれば添える（Python 版の出力は従来どおり）
+    # 同じバージョンの run が複数あっても区別できるよう、ラベルがあれば添える（ラベルの無い run は従来どおり）
     return f"{version}/{run['label']}" if run.get("label") else version
 
 

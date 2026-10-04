@@ -29,7 +29,7 @@ public interface ServerPlatform {
     /** コマンド経路（Paper: RCON）。無い種類は null。 */
     public fun openChannel(provisioned: Provisioned): CommandChannel?
 
-    /** 応答のエラー判定（Paper: isolation.py:21 ERROR_RESPONSE）。 */
+    /** 応答のエラー判定。 */
     public val responseCheck: ResponseCheck
 
     /** 起動中のセッションに能力を結びつける。 */

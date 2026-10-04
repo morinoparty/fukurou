@@ -19,7 +19,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * 1 プレイヤーの Minecraft クライアント（PortableMC で起動する、runner/client.py:33-110）。
+ * 1 プレイヤーの Minecraft クライアント（PortableMC で起動する）。
  * Quick Play でテスト用サーバーへ直接参加する。
  *
  * PortableMC の作業ディレクトリは tools/（portablemc の 2 つ上）。インストール時の出力は launchLog と同じ場所の
@@ -140,7 +140,7 @@ internal class ClientProcess(
     }
 
     private companion object {
-        /** インストーラーを止めるときの猶予（client.py:79）。 */
+        /** インストーラーを止めるときの猶予。 */
         val INSTALLER_GRACE: Duration = 5.seconds
 
         /** ClientDiedException に添える launch.log の行数。 */

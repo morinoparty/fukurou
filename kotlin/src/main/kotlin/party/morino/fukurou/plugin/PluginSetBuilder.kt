@@ -2,7 +2,7 @@ package party.morino.fukurou.plugin
 
 import party.morino.fukurou.FukurouDsl
 
-/** プラグインの宣言（dependencies.py のモデル）。宣言順にサーバーへ入れる。 */
+/** プラグインの宣言。宣言順にサーバーへ入れる。 */
 @FukurouDsl
 public class PluginSetBuilder internal constructor() {
     /** 宣言したプラグイン（role to source）。role は result.json の plugins[].role の値。 */

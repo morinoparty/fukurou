@@ -12,6 +12,7 @@ import java.nio.file.Path
  * @property joinAddress クライアントの接続先
  * @property channelEndpoint コマンド経路の接続先（Rcon(port, password) など）。エンジンは中身を見ない
  * @property bundlerLock 起動から準備完了まで持つロック（Paper: cache/paper-bundler/<ver>）
+ * @property agentEndpoint サーバー内エージェントの接続先。エージェントを入れない種類は null
  */
 public data class Provisioned(
     val command: List<String>,
@@ -20,4 +21,5 @@ public data class Provisioned(
     val joinAddress: InetSocketAddress,
     val channelEndpoint: ChannelEndpoint?,
     val bundlerLock: Path?,
+    val agentEndpoint: AgentEndpoint? = null,
 )

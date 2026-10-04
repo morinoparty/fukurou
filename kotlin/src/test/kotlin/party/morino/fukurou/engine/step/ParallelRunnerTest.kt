@@ -227,7 +227,7 @@ class ParallelRunnerTest {
     }
 
     @Test
-    @DisplayName("Wait labels use Python's %g seconds")
+    @DisplayName("Wait labels drop trailing zeros from seconds")
     fun waitLabel() {
         assertEquals("1.5", StepRunner.seconds(1500.milliseconds))
         assertEquals("2", StepRunner.seconds(2.seconds))

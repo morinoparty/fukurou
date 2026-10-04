@@ -31,7 +31,7 @@ internal fun displayPattern(pattern: Regex): String {
 }
 
 /**
- * 時間を `10s` の形で表示する（Python の `{timeout:g}s`）。秒で割り切れないときは Duration の表記。
+ * 時間を `10s` の形で表示する。秒で割り切れないときは Duration の表記。
  *
  * @param duration 表示する時間
  */

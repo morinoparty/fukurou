@@ -1,0 +1,6 @@
+name: FukurouAgent
+main: party.morino.fukurou.agent.FukurouAgentPlugin
+version: "${version}"
+api-version: "1.20"
+load: STARTUP
+description: fukurou の in-game テストからサーバーの状態の取得・イベントの待ち受け・タスクの実行を受け付けるエージェント
