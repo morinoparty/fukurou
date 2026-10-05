@@ -2,6 +2,7 @@ import { css, cx } from "styled-system/css";
 import type { ManifestV2 } from "../../contract";
 import { commitUrl } from "../../lib/ci";
 import { formatDateTime, shortHash } from "../../lib/format";
+import { distinctVersionCount, groupRunsByLabel } from "../../lib/runs";
 import { eyebrow, pageTitle, panelStyle } from "../../styles";
 
 const meta = css({ mt: "1", display: "flex", flexWrap: "wrap", columnGap: "4", rowGap: "1", color: "fg.muted" });
@@ -26,26 +27,38 @@ const TONES = {
   zero: css({ color: "fg.muted" }),
 };
 
-/** "2 tests × 6 versions: 14 passed, 2 failed, 2 skipped" の本文 */
+/** 数と単位（1 なら単数形） */
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+/**
+ * "9 tests · 2 versions · 8 runs: 20 passed" の本文。
+ * fukurou v3 では 1 バージョンで複数の run ができるので、バージョンは result の Minecraft のバージョンで数える
+ */
 function headlineText(manifest: ManifestV2): string {
   const tests = manifest.tests.length;
-  const versions = manifest.runs.length;
+  const versions = distinctVersionCount(manifest.runs);
+  const runCount = manifest.runs.length;
   const counts = manifest.summary?.tests;
   const parts = (["passed", "failed", "error", "skipped"] as const)
     .filter((key) => (counts?.[key] ?? 0) > 0)
     .map((key) => `${counts?.[key] ?? 0} ${key}`);
-  const shape = `${tests} ${tests === 1 ? "test" : "tests"} × ${versions} ${versions === 1 ? "version" : "versions"}`;
+  const shape = [plural(tests, "test", "tests"), plural(versions, "version", "versions"), plural(runCount, "run", "runs")].join(" · ");
   return parts.length > 0 ? `${shape}: ${parts.join(", ")}` : shape;
 }
 
-/** 副行: run（バージョン）単位の件数 */
+/** 副行: run 単位の件数と、run のラベル（2 種類以上あるとき） */
 function runsText(manifest: ManifestV2): string {
   const runs = manifest.summary?.runs;
   if (!runs) return "";
   const parts = (["passed", "failed", "error"] as const)
     .filter((key) => (runs[key] ?? 0) > 0)
     .map((key) => `${runs[key]} ${key}`);
-  return `${runs.total ?? manifest.runs.length} ${runs.total === 1 ? "version run" : "version runs"}${parts.length > 0 ? ` (${parts.join(", ")})` : ""}`;
+  const total = runs.total ?? manifest.runs.length;
+  const text = `Runs: ${parts.length > 0 ? parts.join(", ") : plural(total, "run", "runs")}`;
+  const labels = groupRunsByLabel(manifest.runs, []).map((group) => group.label ?? "unlabelled");
+  return labels.length > 1 ? `${text} · ${labels.length} servers: ${labels.join(", ")}` : text;
 }
 
 interface SummaryHeaderProps {

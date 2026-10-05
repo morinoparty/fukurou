@@ -47,7 +47,7 @@ export function RootLayout() {
       <LightboxProvider>
         <header className={header}>
           <div className={headerInner}>
-            <Link to="/" className={brand}>
+            <Link to="/" className={brand} title={manifest.title}>
               {manifest.title}
             </Link>
             <span className={css({ ml: "auto", fontSize: "xs", color: "fg.muted", flexShrink: 0 })}>fukurou</span>

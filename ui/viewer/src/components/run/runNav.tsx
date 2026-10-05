@@ -16,12 +16,13 @@ export function runNeighbour(runs: ManifestRun[], current: string, offset: -1 | 
 }
 
 /**
- * 同じテストの前後のバージョンへのリンク（test-run ページ用）。
- * 隣のバージョンにそのテストが無ければ、その run のページへ飛ぶ（ページ側で「not run」を示す）
+ * 同じテストの前後の run へのリンク（test-run ページ用）。
+ * そのテストを含まない run（別のラベルの run など）は飛ばして、テストを含む隣の run へ移る
  */
 export function testRunNeighbour(runs: ManifestRun[], current: string, testId: string, offset: -1 | 1) {
-  const index = runs.findIndex((run) => run.id === current);
-  const target = index >= 0 ? runs[index + offset] : undefined;
+  const candidates = runs.filter((run) => run.id === current || hasTest(run, testId));
+  const index = candidates.findIndex((run) => run.id === current);
+  const target = index >= 0 ? candidates[index + offset] : undefined;
   if (!target) return undefined;
   const label = offset < 0 ? `‹ ${runLabel(target)}` : `${runLabel(target)} ›`;
   return (
@@ -29,6 +30,12 @@ export function testRunNeighbour(runs: ManifestRun[], current: string, testId: s
       {label}
     </Link>
   );
+}
+
+/** run にそのテストがあるか */
+function hasTest(run: ManifestRun, testId: string): boolean {
+  const result = supportedResult(run);
+  return result !== null && findTest(result, testId) !== undefined;
 }
 
 /** run ページのパンくず（Overview › Minecraft X）。link が true なら途中の段としてリンクにする */

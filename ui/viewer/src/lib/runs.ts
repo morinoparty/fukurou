@@ -140,3 +140,95 @@ export function passedCount(test: ManifestTest): { passed: number; total: number
   const statuses = Object.values(test.cells);
   return { passed: statuses.filter((status) => status === "passed").length, total: statuses.length };
 }
+
+/** run のラベル（JUnit の GameServerExtension ごとの名前など）。result のものを優先し、無ければ manifest の label、どちらも無ければ null */
+export function runGroupLabel(run: ManifestRun): string | null {
+  return supportedResult(run)?.label ?? run.label ?? null;
+}
+
+/** 列見出し用の短い名前。result があれば Minecraft のバージョンだけ（ラベルはセクションの見出しに出す）、無ければ run id */
+export function runVersion(run: ManifestRun): string {
+  return supportedResult(run)?.minecraft.version ?? run.id;
+}
+
+/** result から分かる Minecraft のバージョンの数（同じバージョンの複数の run は 1 つと数える） */
+export function distinctVersionCount(runs: ManifestRun[]): number {
+  const versions = runs.flatMap((run) => {
+    const result = supportedResult(run);
+    return result ? [result.minecraft.version] : [];
+  });
+  return new Set(versions).size;
+}
+
+/** 同じラベルの run のまとまり。一覧ではラベルごとに 1 つの表にする */
+export interface RunGroup {
+  /** ラベル。ラベルの無い run は null */
+  label: string | null;
+  /** manifest の順（Minecraft のリリース順） */
+  runs: ManifestRun[];
+  /** このまとまりのどれかの run に含まれるテスト（manifest の順） */
+  tests: ManifestTest[];
+}
+
+/** run をラベルごとにまとめる。まとまりの順は最初に現れた順 */
+export function groupRunsByLabel(runs: ManifestRun[], tests: ManifestTest[]): RunGroup[] {
+  const groups = new Map<string | null, ManifestRun[]>();
+  for (const run of runs) {
+    const label = runGroupLabel(run);
+    const list = groups.get(label);
+    if (list) list.push(run);
+    else groups.set(label, [run]);
+  }
+  return [...groups.entries()].map(([label, groupRuns]) => ({
+    label,
+    runs: groupRuns,
+    tests: tests.filter((test) => groupRuns.some((run) => test.cells[run.id] !== undefined)),
+  }));
+}
+
+/** テストの、指定した run だけで見た状態（error > failed > passed > skipped の優先）。どの run にも無ければ null */
+export function statusAmong(test: ManifestTest, runs: ManifestRun[]): TestStatus | null {
+  let worst: TestStatus | null = null;
+  for (const run of runs) {
+    const status = test.cells[run.id];
+    if (status && (worst === null || (STATUS_RANK[status] ?? 9) < (STATUS_RANK[worst] ?? 9))) worst = status;
+  }
+  return worst;
+}
+
+/** passedCount の、指定した run だけで数える版 */
+export function passedCountAmong(test: ManifestTest, runs: ManifestRun[]): { passed: number; total: number } {
+  const statuses = runs.flatMap((run) => {
+    const status = test.cells[run.id];
+    return status ? [status] : [];
+  });
+  return { passed: statuses.filter((status) => status === "passed").length, total: statuses.length };
+}
+
+/** sortFailuresFirst の、指定した run だけで見た状態で並べる版（セクションごとの並び替えに使う） */
+export function sortFailuresFirstAmong(tests: ManifestTest[], runs: ManifestRun[]): ManifestTest[] {
+  return tests
+    .map((test, index) => ({ test, index, rank: STATUS_RANK[statusAmong(test, runs) ?? "skipped"] ?? 9 }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((entry) => entry.test);
+}
+
+/** そのテストを含む run だけを manifest の順で返す */
+export function runsWithTest(runs: ManifestRun[], testId: string): ManifestRun[] {
+  return runs.filter((run) => {
+    const result = supportedResult(run);
+    return result !== null && findTest(result, testId) !== undefined;
+  });
+}
+
+/**
+ * run の中でそのテストに居たプレイヤー（players とスクリーンショットの和集合）を、order の順に並べて返す。
+ * order に無い名前は後ろに付ける
+ */
+export function runPlayersOf(run: ManifestRun, testId: string, order: string[]): string[] {
+  const result = supportedResult(run);
+  const test = result ? findTest(result, testId) : undefined;
+  if (!test) return [];
+  const names = playersOf(test);
+  return [...order.filter((name) => names.includes(name)), ...names.filter((name) => !order.includes(name))];
+}

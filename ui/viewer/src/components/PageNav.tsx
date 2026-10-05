@@ -1,10 +1,20 @@
 import { Link } from "@tanstack/react-router";
-import { Fragment, type ReactElement, type ReactNode } from "react";
+import { cloneElement, Fragment, type ReactElement, type ReactNode } from "react";
 import { css } from "styled-system/css";
 import { Breadcrumb, Button } from "../chlorophyll";
 import { buttonLinkStyle } from "../styles";
 
 const nav = css({ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: "4", rowGap: "2" });
+// パンくずは前後ボタンの残りの幅に収め、長い段（テスト名など）は 1 行で省略する。全文は title で見せる
+const crumbsRoot = css({ flex: "1 1 20rem", minWidth: "0" });
+const crumbText = css({
+  display: "inline-block",
+  maxWidth: { base: "16rem", md: "32rem" },
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  verticalAlign: "bottom",
+});
 // 長いテスト id でもスマホ幅からはみ出さないよう、折り返しと省略を許す
 const neighbours = css({
   ml: "auto",
@@ -39,11 +49,25 @@ interface PageNavProps {
   next?: ReactElement;
 }
 
+/** 文字列の段だけ title に全文を入れる */
+function titleOf(label: ReactNode): string | undefined {
+  return typeof label === "string" ? label : undefined;
+}
+
+/** 途中の段の Link の中身を、省略できる span で包み直す（リンク先などの props はそのまま） */
+function truncatedLink(link: ReactElement, label: ReactNode): ReactElement {
+  return cloneElement(
+    link as ReactElement<{ children?: ReactNode; title?: string }>,
+    { title: titleOf(label) },
+    <span className={crumbText}>{label}</span>,
+  );
+}
+
 /** パンくず（Overview › … › 現在地）と、前後へ移動するボタン */
 export function PageNav({ crumbs, previous, next }: PageNavProps) {
   return (
     <div className={nav}>
-      <Breadcrumb.Root>
+      <Breadcrumb.Root className={crumbsRoot}>
         <Breadcrumb.List>
           <Breadcrumb.Item>
             <Breadcrumb.Link asChild>
@@ -58,9 +82,13 @@ export function PageNav({ crumbs, previous, next }: PageNavProps) {
               <Breadcrumb.Separator />
               <Breadcrumb.Item>
                 {crumb.link ? (
-                  <Breadcrumb.Link asChild>{crumb.link}</Breadcrumb.Link>
+                  <Breadcrumb.Link asChild>{truncatedLink(crumb.link, crumb.label)}</Breadcrumb.Link>
                 ) : (
-                  <Breadcrumb.Page>{crumb.label}</Breadcrumb.Page>
+                  <Breadcrumb.Page>
+                    <span className={crumbText} title={titleOf(crumb.label)}>
+                      {crumb.label}
+                    </span>
+                  </Breadcrumb.Page>
                 )}
               </Breadcrumb.Item>
             </Fragment>

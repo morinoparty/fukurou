@@ -19,8 +19,15 @@ export const panelStyle = css.raw({
 /** 補足の小さな文字 */
 export const mutedTextStyle = css.raw({ color: "fg.muted", fontSize: "xs" });
 
-/** 見出し（ページ） */
-export const pageTitleStyle = css.raw({ textStyle: "2xl", fontWeight: "bold", letterSpacing: "tight", color: "colorPalette.fg" });
+/** 見出し（ページ）。コミット SHA のような切れ目の無い長い文字列でも狭い画面からはみ出さないように折り返す */
+export const pageTitleStyle = css.raw({
+  textStyle: "2xl",
+  fontWeight: "bold",
+  letterSpacing: "tight",
+  color: "colorPalette.fg",
+  overflowWrap: "anywhere",
+  minWidth: "0",
+});
 
 /** 見出し（セクション） */
 export const sectionTitleStyle = css.raw({ textStyle: "lg", fontWeight: "semibold", color: "colorPalette.fg" });
