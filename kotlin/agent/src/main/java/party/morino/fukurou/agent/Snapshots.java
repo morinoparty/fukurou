@@ -167,6 +167,8 @@ final class Snapshots {
         json.addProperty("sprinting", player.isSprinting());
         json.addProperty("op", player.isOp());
         json.addProperty("selectedSlot", player.getInventory().getHeldItemSlot());
+        // クライアントの言語（ja_jp など）。Bukkit の getLocale は 1.12 からある
+        json.addProperty("locale", player.getLocale());
         json.add("inventory", items(player.getInventory().getContents()));
         json.add("openInventory", openInventory(player));
         JsonArray effects = new JsonArray();

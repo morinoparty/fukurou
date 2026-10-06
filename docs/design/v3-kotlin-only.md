@@ -94,7 +94,8 @@ PlayerSnapshot  {"name","uuid","location":Location,"gameMode":"survival","health
                  "level":0,"exp":0.0,"flying":false,"sneaking":false,"sprinting":false,"op":false,"selectedSlot":0,
                  "inventory":[Item|null ×41],            // getContents(): 0-35 本体（0-8 ホットバー）、36-39 防具（足→頭）、40 オフハンド
                  "openInventory":{"type":"CHEST","title":<Component>,"size":27,"contents":[Item|null]}|null,  // 自分のインベントリ（CRAFTING / CREATIVE）なら null
-                 "effects":[{"type":"minecraft:speed","amplifier":0,"duration":200}],"tags":["…"]}
+                 "effects":[{"type":"minecraft:speed","amplifier":0,"duration":200}],"tags":["…"],
+                 "locale":"ja_jp"}                       // Player#getLocale。クライアントの言語は PlayerProfile.locale（options.txt の lang）
 BlockSnapshot   {"world","x","y","z","type":"minecraft:oak_stairs","data":"minecraft:oak_stairs[facing=east,…]"}
 EntitySnapshot  {"uuid","type":"minecraft:zombie","location":Location,"name":<Component|null>,"customName":<Component|null>,
                  "tags":["…"],"health":<double|null>,"dead":false}

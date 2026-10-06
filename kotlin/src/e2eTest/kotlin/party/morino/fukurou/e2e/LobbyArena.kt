@@ -3,6 +3,7 @@ package party.morino.fukurou.e2e
 import party.morino.fukurou.junit.GameServerExtension
 import party.morino.fukurou.player.Player
 import party.morino.fukurou.server.ServerSpec
+import java.util.Locale
 
 /**
  * 複数サーバーの e2e（MultiServerTest）の 1 台目。プラグインは入れず、プレイヤーは 1 人。
@@ -11,8 +12,8 @@ import party.morino.fukurou.server.ServerSpec
  * 余裕を持って収まるよう、サーバーのヒープを既定の 2G から下げる（見積もり 1024 + 750 + 1536 + 900 = 4210 MB）。
  */
 class LobbyArena : GameServerExtension() {
-    /** op のプレイヤー。ロビー側のコマンドとメッセージを受け取る。 */
-    val carol: Player by player("Carol", op = true)
+    /** op のプレイヤー。ロビー側のコマンドとメッセージを受け取る。クライアントの言語の設定を確かめるため日本語にする。 */
+    val carol: Player by player("Carol", op = true, locale = Locale.JAPAN)
 
     override fun ServerSpec.configure() {
         // result id と出力ディレクトリを DuelArena と分ける

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import java.util.Locale
 
 class PlayerTypesTest {
     @Test
@@ -12,6 +13,18 @@ class PlayerTypesTest {
         assertEquals("Alice_01", PlayerProfile("Alice_01").name)
         listOf("Al", "Alice Bob", "a".repeat(17), "server").forEach { name ->
             assertThrows<IllegalArgumentException>(name) { PlayerProfile(name) }
+        }
+    }
+
+    @Test
+    @DisplayName("The locale becomes a Minecraft language code and needs a country")
+    fun locales() {
+        assertEquals("en_us", PlayerProfile("Alice").minecraftLanguage)
+        assertEquals("ja_jp", PlayerProfile("Alice", locale = Locale.JAPAN).minecraftLanguage)
+        assertEquals("ja_jp", PlayerProfile("Alice", locale = Locale.forLanguageTag("ja-JP")).minecraftLanguage)
+        assertEquals("fil_ph", PlayerProfile("Alice", locale = Locale.forLanguageTag("fil-PH")).minecraftLanguage)
+        listOf(Locale.JAPANESE, Locale.ROOT).forEach { locale ->
+            assertThrows<IllegalArgumentException>(locale.toString()) { PlayerProfile("Alice", locale = locale) }
         }
     }
 

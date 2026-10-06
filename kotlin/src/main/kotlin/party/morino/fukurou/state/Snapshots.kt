@@ -57,6 +57,7 @@ public data class EffectSnapshot(val type: Key, val amplifier: Int, val duration
  *
  * @property inventory getContents() の 41 スロット。0〜35 が本体（0〜8 がホットバー）、36〜39 が防具（足→頭）、40 がオフハンド
  * @property openInventory 開いているコンテナの画面。自分のインベントリ（または何も開いていない）なら null
+ * @property locale サーバーが受け取ったクライアントの言語（Player#getLocale、ja_jp など）。参加直後は en_us のことがある
  */
 public data class PlayerSnapshot(
     val name: String,
@@ -78,6 +79,7 @@ public data class PlayerSnapshot(
     val openInventory: InventoryViewSnapshot?,
     val effects: List<EffectSnapshot>,
     val tags: Set<String>,
+    val locale: String,
 ) {
     /** 手に持っているアイテム（ホットバーの選択中のスロット）。 */
     public val mainHand: ItemSnapshot? get() = inventory.getOrNull(selectedSlot)

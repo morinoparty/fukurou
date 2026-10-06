@@ -91,6 +91,8 @@ internal object AgentDecoder {
                 EffectSnapshot(e.key("type"), e.int("amplifier"), e.int("duration"))
             },
             tags = obj.arrayOrEmpty("tags").map { it.text() }.toSet(),
+            // 古いエージェント（locale を送らない）でも読めるようにする
+            locale = obj.optional("locale")?.primitive()?.contentOrNull ?: "",
         )
     }
 

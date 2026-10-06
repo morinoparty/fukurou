@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import party.morino.fukurou.eventually
 import party.morino.fukurou.pause
 import party.morino.fukurou.player.Player
 import party.morino.fukurou.server.GameServer
@@ -42,6 +43,8 @@ class MultiServerTest {
         assertSame(lobbyServer, carol.server)
         assertSame(duelServer, dave.server)
         assertEquals(listOf("Carol"), lobbyServer.players.map { it.name })
+        // Carol のクライアントは ja_jp で起動する（options.txt の lang）。参加の直後は既定の en_us のことがあるので待つ
+        eventually { assertEquals("ja_jp", carol.state().locale, "Carol's client language seen by the server") }
         assertEquals(listOf("Dave"), duelServer.players.map { it.name })
 
         // 各サーバーの RCON のコマンドは、そのサーバーのプレイヤーにだけ届く

@@ -13,6 +13,7 @@ import party.morino.fukurou.server.ServerDefinition
 import party.morino.fukurou.server.ServerSpec
 import party.morino.fukurou.server.ServerType
 import java.nio.file.Path
+import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -49,8 +50,9 @@ public class Fukurou internal constructor(public val config: FukurouConfig, priv
             }
     }
 
-    /** 参加前のプレイヤー。操作は持たない。名前の規則は [PlayerProfile] を参照。 */
-    public fun player(name: String, op: Boolean = false): PlayerProfile = PlayerProfile(name, op)
+    /** 参加前のプレイヤー。操作は持たない。名前と言語の規則は [PlayerProfile] を参照。 */
+    public fun player(name: String, op: Boolean = false, locale: Locale = Locale.US): PlayerProfile =
+        PlayerProfile(name, op, locale)
 
     /** 起動前のサーバー定義。configure の後で型の能力と設定の整合を検査する（§1.3）。 */
     public fun server(type: ServerType, configure: ServerSpec.() -> Unit = {}): ServerDefinition {

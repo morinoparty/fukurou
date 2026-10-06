@@ -252,7 +252,7 @@ class AgentAccessTest {
                         """"selectedSlot":0,"inventory":$inventory,""" +
                         """"openInventory":{"type":"CHEST","title":{"text":"Chest"},"size":27,"contents":[null,""" +
                         """{"type":"minecraft:stone","amount":64,"name":null,"lore":[],"customModelData":null,"enchantments":{},"damage":null,"unbreakable":false}]},""" +
-                        """"effects":[{"type":"minecraft:speed","amplifier":1,"duration":200}],"tags":["a","b"]}""",
+                        """"effects":[{"type":"minecraft:speed","amplifier":1,"duration":200}],"tags":["a","b"],"locale":"ja_jp"}""",
                 ),
             ),
         )
@@ -297,6 +297,7 @@ class AgentAccessTest {
             assertNull(chest.contents[0])
             assertEquals(Key.key("minecraft:speed"), player.effects.single().type)
             assertEquals(setOf("a", "b"), player.tags)
+            assertEquals("ja_jp", player.locale)
         }
         // 引数
         val byOp = agent.requests.associateBy { it.op }

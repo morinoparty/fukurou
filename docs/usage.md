@@ -312,6 +312,7 @@ All public API is in `party.morino.fukurou` and its sub-packages. Everything tha
 class StampArena : GameServerExtension() {
     val alice by player("Alice", op = true)   // declaration order = join order
     val bob by player("Bob")
+    val carol by player("Carol", locale = Locale.JAPAN)   // client language ja_jp (default Locale.US = en_us)
 
     override fun type(config: FukurouConfig): ServerType = Paper.fromProperties(config)        // optional; this is the default
     override fun ServerSpec.configure() { label = "stamp-arena" }                                 // required
@@ -322,7 +323,8 @@ class StampArena : GameServerExtension() {
 ```
 
 - One subclass = one independent server = one `result.json`. Every test class that registers it (with `@ExtendWith(StampArena::class)` or a static `@JvmField @RegisterExtension` field) shares the running server. `FukurouClassOrderer` (in `junit-platform.properties`) runs the classes that share a server one after another.
-- `player(name, op)` declares a player. Names match `^[A-Za-z0-9_]{3,16}$` and `server` is reserved. The property returns the joined `Player` of the current session (it stays valid across a fresh server).
+- `player(name, op, locale)` declares a player. Names match `^[A-Za-z0-9_]{3,16}$` and `server` is reserved. The property returns the joined `Player` of the current session (it stays valid across a fresh server).
+- `locale` (default `Locale.US`) is the client's language: it is written to the client's `options.txt` as `lang` (`Locale.JAPAN` → `ja_jp`) and is the player's Adventure `Identity.LOCALE`. It needs a language and a country (`Locale.JAPAN`, `Locale.forLanguageTag("ja-JP")`; `Locale.JAPANESE` is rejected). Text the client translates itself — join/leave messages, vanilla command feedback, item names — appears in that language in the client log, so write `awaitChat` patterns for it. `Fukurou.player(name, op, locale)` takes the same argument.
 - A test method can take the extension (`arena: StampArena`) as a parameter, and the `GameServer` when exactly one fukurou extension is registered on the class. With several extensions, take the extensions and use `arena.server`. `Player` is not injected.
 - `server` is also available as `arena.server`.
 
@@ -446,7 +448,7 @@ These go through the agent and run on the server's main thread.
 
 | Function | Returns |
 | --- | --- |
-| `player.state()` | `PlayerSnapshot`: `name`, `uuid`, `location`, `gameMode` (`"survival"`…), `health`, `maxHealth`, `food`, `saturation`, `level`, `exp`, `flying`, `sneaking`, `sprinting`, `op`, `selectedSlot`, `inventory` (41 slots: 0–35 main with 0–8 the hotbar, 36–39 armor from feet to head, 40 off hand), `openInventory` (`InventoryViewSnapshot(type, title, size, contents)`, or `null` for the player's own inventory, including the creative one, or nothing open), `effects`, `tags`; helpers `mainHand`, `offHand`, `count(itemKey)`. A player who is not online is `AgentRequestException("not_found")`. |
+| `player.state()` | `PlayerSnapshot`: `name`, `uuid`, `location`, `gameMode` (`"survival"`…), `health`, `maxHealth`, `food`, `saturation`, `level`, `exp`, `flying`, `sneaking`, `sprinting`, `op`, `selectedSlot`, `inventory` (41 slots: 0–35 main with 0–8 the hotbar, 36–39 armor from feet to head, 40 off hand), `openInventory` (`InventoryViewSnapshot(type, title, size, contents)`, or `null` for the player's own inventory, including the creative one, or nothing open), `effects`, `tags`, `locale` (the client language the server received, e.g. `ja_jp`; right after joining it can still be `en_us`); helpers `mainHand`, `offHand`, `count(itemKey)`. A player who is not online is `AgentRequestException("not_found")`. |
 | `server.block(BlockPos(x, y, z), world = Worlds.OVERWORLD)` | `BlockSnapshot(world, x, y, z, type, data)`; `data` is the block state string, usable with `setBlock`. |
 | `server.entities(EntityQuery(world, type, near, radius = 16.0, tag, limit = 256))` | `List<EntitySnapshot>` (`uuid`, `type`, `location`, `name`, `customName`, `tags`, `health`, `dead`), players included. `limit` is 1..4096. |
 | `server.worldState(world = Worlds.OVERWORLD)` | `WorldSnapshot(key, name, time, fullTime, storm, thundering, difficulty, players)`. |

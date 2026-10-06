@@ -99,7 +99,7 @@ internal class PlayerSession(
     override val uuid: UUID = OfflineUuid.of(profile.name)
 
     /** Adventure の pointers。 */
-    private val pointers: Pointers = PlayerPointers.of(profile.name, uuid)
+    private val pointers: Pointers = PlayerPointers.of(profile.name, uuid, profile.locale)
 
     /** 入力を直列にするロック。 */
     private val input = Mutex()
@@ -829,6 +829,7 @@ internal class PlayerSession(
                 clientDir = dirs.clientDir(profile.name),
                 heap = server.definition.clientHeap,
                 launchLog = dirs.launchLog(profile.name),
+                language = profile.minecraftLanguage,
             )
             return PlayerSession(server, profile, client, VirtualDisplay(dirs.xvfbLog(profile.name)))
         }

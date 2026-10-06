@@ -85,11 +85,12 @@ import party.morino.fukurou.plugin.PluginSource
 import party.morino.fukurou.server.*
 import party.morino.fukurou.server.paper.Paper
 import party.morino.fukurou.world.BlockPos
+import java.util.Locale
 import kotlin.time.Duration.Companion.seconds
 
 class StampArena : GameServerExtension() {
     val alice by player("Alice", op = true)
-    val bob by player("Bob")
+    val bob by player("Bob", locale = Locale.JAPAN)   // client language ja_jp (default en_us)
 
     // The action sets FUKUROU_MINECRAFT_VERSION / FUKUROU_PAPER_CHANNEL, which override these defaults in CI
     override fun type(config: FukurouConfig): ServerType = Paper.fromProperties(config, defaultVersion = "1.21.11")
