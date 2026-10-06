@@ -1,6 +1,6 @@
 package party.morino.fukurou.server.paper
 
-/** Paper のビルドのチャンネル。安定している順（paper.py:10-13）。 */
+/** Paper のビルドのチャンネル。安定している順。 */
 public enum class PaperChannel {
     /** 安定版。 */
     Stable,

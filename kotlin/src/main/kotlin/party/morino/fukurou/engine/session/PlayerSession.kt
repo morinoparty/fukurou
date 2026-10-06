@@ -5,6 +5,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import net.kyori.adventure.bossbar.BossBar
 import net.kyori.adventure.chat.ChatType
 import net.kyori.adventure.chat.SignedMessage
@@ -32,6 +33,7 @@ import party.morino.fukurou.engine.log.LogWindow
 import party.morino.fukurou.engine.log.WindowedLogView
 import party.morino.fukurou.engine.step.StepRunner
 import party.morino.fukurou.engine.test.TestRun
+import party.morino.fukurou.engine.x11.HeldInput
 import party.morino.fukurou.engine.x11.KeycodeResolver
 import party.morino.fukurou.engine.x11.MinecraftWindow
 import party.morino.fukurou.engine.x11.VirtualDisplay
@@ -44,6 +46,7 @@ import party.morino.fukurou.log.LogMatch
 import party.morino.fukurou.log.LogView
 import party.morino.fukurou.player.Chord
 import party.morino.fukurou.player.KeySym
+import party.morino.fukurou.player.MouseButton
 import party.morino.fukurou.player.Perspective
 import party.morino.fukurou.player.Player
 import party.morino.fukurou.player.PlayerProfile
@@ -55,6 +58,7 @@ import party.morino.fukurou.spi.capability.AudienceCommands
 import party.morino.fukurou.spi.capability.CommandEcho
 import party.morino.fukurou.spi.capability.PlayerCommands
 import party.morino.fukurou.spi.model.CommandCall
+import party.morino.fukurou.state.PlayerSnapshot
 import party.morino.fukurou.world.GameMode
 import party.morino.fukurou.world.Location
 import java.net.InetSocketAddress
@@ -71,7 +75,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 /**
- * 参加済みのプレイヤー（Player の実装、runner/player_session.py の移植）。
+ * 参加済みのプレイヤー（Player の実装）。
  *
  * 専用の仮想ディスプレイとクライアントを持つ。クライアントを起動し直しても同じインスタンスのまま中身を付け替えるので、
  * テストが持っている参照は古くならない。入力（キー・文字・チャット・撮影）はプレイヤーごとの Mutex で直列にし、
@@ -95,10 +99,13 @@ internal class PlayerSession(
     override val uuid: UUID = OfflineUuid.of(profile.name)
 
     /** Adventure の pointers。 */
-    private val pointers: Pointers = PlayerPointers.of(profile.name, uuid)
+    private val pointers: Pointers = PlayerPointers.of(profile.name, uuid, profile.locale)
 
     /** 入力を直列にするロック。 */
     private val input = Mutex()
+
+    /** 押したままのキーとボタン（テストの終わりに releaseHeldInput が離す）。 */
+    private val held = HeldInput()
 
     /** インストール（portablemc --dry）を 1 回にするロック。 */
     private val installLock = Mutex()
@@ -155,7 +162,7 @@ internal class PlayerSession(
         }
     }
 
-    /** 専用ディスプレイを起動し、その上でクライアントを起動してサーバーへ参加させる（player_session.py:70 start）。 */
+    /** 専用ディスプレイを起動し、その上でクライアントを起動してサーバーへ参加させる。 */
     suspend fun launch(address: InetSocketAddress) {
         // 前の起動のディスプレイ番号が再利用されうるので、キーマップを読み直させる
         val displayName = display.start()
@@ -165,6 +172,8 @@ internal class PlayerSession(
         launches++
         running = true
         window = null
+        // 新しいクライアントは何も押していない
+        held.clear()
         perspective.reset()
     }
 
@@ -174,7 +183,7 @@ internal class PlayerSession(
         logWindow = LogWindow(client.latestLog)
     }
 
-    /** クライアントとディスプレイを止める（player_session.py:132 stop）。 */
+    /** クライアントとディスプレイを止める。 */
     suspend fun shutdown() {
         if (!running && !client.isAlive && !display.isAlive) return
         val displayName = runCatching { display.display }.getOrNull()
@@ -184,6 +193,8 @@ internal class PlayerSession(
             display.stop(DISPLAY_GRACE)
             displayName?.let(KEYCODES::invalidate)
             window = null
+            // 止めたクライアントのキーは押されていない
+            held.clear()
             running = false
         }
     }
@@ -192,7 +203,7 @@ internal class PlayerSession(
     fun deathReason(): String? = (runCatching { client.checkAlive() }.exceptionOrNull() as? ClientDiedException)?.message
 
     /**
-     * クライアントを止めてログを回収し、起動し直して参加を待つ（session.py:168-178 relaunch）。
+     * クライアントを止めてログを回収し、起動し直して参加を待つ。
      */
     suspend fun relaunch() {
         shutdown()
@@ -201,7 +212,7 @@ internal class PlayerSession(
         JoinCoordinator.join(server, this)
     }
 
-    /** ウィンドウ。最初の呼び出し（と起動し直した後）は現れるまで待つ（player_session.py:123）。 */
+    /** ウィンドウ。最初の呼び出し（と起動し直した後）は現れるまで待つ。 */
     private suspend fun window(timeout: Duration = server.definition.joinTimeout): MinecraftWindow =
         window ?: MinecraftWindow.waitFor(display.display, KEYCODES, timeout).also { window = it }
 
@@ -268,8 +279,161 @@ internal class PlayerSession(
         repeat(this.perspective.pressesTo(perspective)) { pressKey(KeySym.F5) }
     }
 
+    // --- 押したままの入力とマウス（v3 設計 §2.2） ----------------------------------------
+
+    /** キーを押したままにする（press_key、label は "w down"）。テストの終わりまでに離さなければ releaseHeldInput が離す。 */
+    override suspend fun keyDown(key: KeySym) {
+        inputStep(ACTION_PRESS_KEY, "${key.keysym} down") { run ->
+            // 押したままのキーは画面や移動の状態を残すので、passed で終わらなければ起動し直す
+            run?.touched?.add(name)
+            val current = window()
+            // 送信に失敗しても押されているかもしれないので、送る前に記録する（ウィンドウが無ければ何も押していない）
+            held.keyPressed(key)
+            current.keyDown(key)
+        }
+    }
+
+    /** 押したままのキーを離す（press_key、label は "w up"）。 */
+    override suspend fun keyUp(key: KeySym) {
+        inputStep(ACTION_PRESS_KEY, "${key.keysym} up") { _ ->
+            window().keyUp(key)
+            // 離せたときだけ記録から消す（失敗したものはテストの終わりにもう一度離す）
+            held.keyReleased(key)
+        }
+    }
+
+    /** キーを duration の間押し続ける（hold_key、label は "w 2s"）。待ちはステップの期限で打ち切られ、必ず離す。 */
+    override suspend fun holdKey(key: KeySym, duration: Duration) {
+        require(duration.isPositive()) { "holdKey duration must be positive (got $duration)" }
+        heldStep(ACTION_HOLD_KEY, "${key.keysym} ${StepRunner.seconds(duration)}s", duration,
+            press = { current ->
+                held.keyPressed(key)
+                current.keyDown(key)
+            },
+            release = { current ->
+                current.keyUp(key)
+                held.keyReleased(key)
+            },
+        )
+    }
+
     /**
-     * テストの前にチャットの HUD を消し（F3+D）、視点を一人称へ戻す（player_session.py:95-107）。ベストエフォートで記録しない。
+     * keys を順に押し（press_key "w down"）、block を実行し、最後に逆の順で離す（press_key "w up"）。
+     * block の間は入力のロックを持たないので、block から同じプレイヤーへ入力できる（歩きながらジャンプなど）。
+     * 離すのは例外・取り消しでも NonCancellable で行い、離せなかったキーはテストの終わりに releaseHeldInput が離す。
+     */
+    override suspend fun <T> holding(keys: List<KeySym>, block: suspend () -> T): T {
+        require(keys.isNotEmpty()) { "holding needs at least one key" }
+        val pressed = mutableListOf<KeySym>()
+        return HeldInput.releasingAfter(release = { HeldInput.releaseEach(pressed.asReversed()) { keyUp(it) } }) {
+            for (key in keys) {
+                // 押し始めたものは送信に失敗しても離す対象にする
+                pressed += key
+                keyDown(key)
+            }
+            block()
+        }
+    }
+
+    /** マウスをウィンドウの座標へ動かす（mouse_move、label は "640,360"）。 */
+    override suspend fun mouseMove(x: Int, y: Int) {
+        // 引数の誤りはステップを記録する前に知らせる
+        MinecraftWindow.checkPoint(x, y)
+        inputStep(ACTION_MOUSE_MOVE, "$x,$y") { _ -> window().mouseMove(x, y) }
+    }
+
+    /** 今のカーソルの位置でクリックする（click、label は "left"）。 */
+    override suspend fun click(button: MouseButton) {
+        inputStep(ACTION_CLICK, button.label) { run ->
+            // クリックで画面が開くことがある
+            run?.touched?.add(name)
+            window().click(button)
+        }
+    }
+
+    /** (x, y) へ動かしてクリックする（mouse_move と click の 2 ステップ）。 */
+    override suspend fun click(x: Int, y: Int, button: MouseButton) {
+        MinecraftWindow.checkPoint(x, y)
+        mouseMove(x, y)
+        click(button)
+    }
+
+    /** ボタンを duration の間押し続ける（hold_mouse、label は "left 1.5s"）。待ちはステップの期限で打ち切られ、必ず離す。 */
+    override suspend fun holdMouse(button: MouseButton, duration: Duration) {
+        require(duration.isPositive()) { "holdMouse duration must be positive (got $duration)" }
+        heldStep(ACTION_HOLD_MOUSE, "${button.label} ${StepRunner.seconds(duration)}s", duration,
+            press = { current ->
+                held.buttonPressed(button)
+                current.mouseDown(button)
+            },
+            release = { current ->
+                current.mouseUp(button)
+                held.buttonReleased(button)
+            },
+        )
+    }
+
+    /** ホイールを回す（scroll、label は "3"）。正で下、負で上。 */
+    override suspend fun scroll(steps: Int) {
+        require(steps != 0) { "scroll steps must not be 0" }
+        inputStep(ACTION_SCROLL, steps.toString()) { _ -> window().scroll(steps) }
+    }
+
+    /** ホットバーのスロット（0〜8）を数字キーで選ぶ（press_key、label は "1"〜"9"）。 */
+    override suspend fun selectHotbar(slot: Int) {
+        require(slot in 0 until HOTBAR_KEYS.size) { "hotbar slot must be 0..${HOTBAR_KEYS.size - 1} (got $slot)" }
+        pressKey(HOTBAR_KEYS[slot])
+    }
+
+    /**
+     * テストの終わりに、押したままのキーとボタンを離す（finishTest から）。ステップにはせず、投げない。
+     *
+     * ウィンドウがまだ無い・入力のロックが取れない（置き去りのレーンが持っている）・xdotool が失敗したときは、
+     * 押したままかもしれないので dirty にし、次のテストの前にクライアントを起動し直させる。
+     */
+    suspend fun releaseHeldInput() {
+        val problem = held.releaseAtEnd(window, input, RELEASE_TIMEOUT) ?: return
+        server.warn("$name: could not release held keys or buttons: $problem")
+        server.dirty.putIfAbsent(name, DIRTY_HELD_INPUT_REASON)
+    }
+
+    /**
+     * 押し続けるステップ（hold_key / hold_mouse）。press → delay(duration) → release。
+     * 押すときと離すときだけ入力のロックを取り、待ちの間は持たない。離すのは例外・取り消し・期限でも NonCancellable で行う。
+     */
+    private suspend fun heldStep(
+        action: String,
+        label: String,
+        duration: Duration,
+        press: suspend (MinecraftWindow) -> Unit,
+        release: suspend (MinecraftWindow) -> Unit,
+    ) {
+        StepRunner.step(server, name, action, label, inputPlayer = name) { run, _ ->
+            run?.touched?.add(name)
+            var current: MinecraftWindow? = null
+            // 離すのは NonCancellable なので、置き去りのレーンがロックを持ち続けても止まらないよう RELEASE_TIMEOUT で打ち切る。
+            // 打ち切ったら記録が残り、テストの終わりの releaseHeldInput がもう一度離す（だめなら dirty）
+            val releaseOnce: suspend () -> Unit = {
+                current?.let { found ->
+                    // 取り消しの例外にすると呼び出し元の取り消しと区別できないので、入力の失敗にする
+                    withTimeoutOrNull(RELEASE_TIMEOUT) { input.withLock { release(found) } }
+                        ?: throw InputException("$name: could not take the input lock to release $label within $RELEASE_TIMEOUT")
+                }
+            }
+            HeldInput.releasingAfter(release = releaseOnce) {
+                input.withLock {
+                    val found = window()
+                    current = found
+                    press(found)
+                }
+                // ステップの withTimeout がテストの期限で打ち切る
+                delay(duration)
+            }
+        }
+    }
+
+    /**
+     * テストの前にチャットの HUD を消し（F3+D）、視点を一人称へ戻す。ベストエフォートで記録しない。
      */
     suspend fun normalizeView() {
         try {
@@ -294,13 +458,14 @@ internal class PlayerSession(
         require(name != FAILURE_SCREENSHOT) { "'$FAILURE_SCREENSHOT' is reserved for the screenshot taken when a test fails" }
         return StepRunner.step(server, this.name, "screenshot", name, inputPlayer = this.name, screenshotOf = { it.artifactPath }) { run, stepId ->
             checkNotNull(run) { "screenshot($name) needs a running test; call it inside server.test { } or a JUnit test" }
-            run.claimScreenshot(this.name, name, checkNotNull(stepId))
-            input.withLock { capture(run, name, stepId, server.definition.joinTimeout) }
+            // eventually / awaitUntil の試行（stepId が null）では撮り直しを許し、そのブロックのステップに結びつける
+            val owner = StepRunner.claimScreenshot(run, this.name, name, stepId)
+            input.withLock { capture(run, name, owner, server.definition.joinTimeout) }
         }
     }
 
     /**
-     * 失敗時の撮影（suite_run.py:562-584）。ウィンドウは短い時間（10 秒）だけ待ち、ステップにはしない。
+     * 失敗時の撮影。ウィンドウは短い時間（10 秒）だけ待ち、ステップにはしない。
      *
      * @param stepId 失敗したステップの仮 id
      */
@@ -323,10 +488,10 @@ internal class PlayerSession(
         }
         server.log("$name: saved $relative (${width}x$height)")
         server.observer.screenshotTaken(run.testId, ScreenshotInfo(name, shotName, relative, width, height), stepId)
-        return Screenshot(name, shotName, destination, relative, width, height)
+        return Screenshot(name, shotName, destination, relative, width, height).also { it.origin = server }
     }
 
-    /** 新しい PNG が現れ、書き込みが終わる（サイズが変わらなくなる）まで待つ（player_session.py:139-151）。 */
+    /** 新しい PNG が現れ、書き込みが終わる（サイズが変わらなくなる）まで待つ。 */
     private suspend fun waitForNewPng(directory: Path, before: Set<Path>): Path {
         val deadline = TimeSource.Monotonic.markNow() + SCREENSHOT_TIMEOUT
         while (deadline.hasNotPassedNow()) {
@@ -384,6 +549,14 @@ internal class PlayerSession(
     override suspend fun give(item: Key, count: Int) {
         server.executeCalls(commands().give(name, item, count))
     }
+
+    /** 位置を変えずに向きを変える（サーバー側の回転）。 */
+    override suspend fun look(yaw: Float, pitch: Float) {
+        server.executeCalls(commands().rotate(name, yaw, pitch))
+    }
+
+    /** サーバーから見た状態（エージェント）。 */
+    override suspend fun state(): PlayerSnapshot = server.agentAccess.player(name)
 
     // --- クライアントログの照合 -----------------------------------------------------------
 
@@ -599,10 +772,37 @@ internal class PlayerSession(
         /** press_key の action。 */
         private const val ACTION_PRESS_KEY = "press_key"
 
-        /** チャット欄が開くまで待つ時間（player_session.py:91）。 */
+        /** hold_key の action。 */
+        private const val ACTION_HOLD_KEY = "hold_key"
+
+        /** mouse_move の action。 */
+        private const val ACTION_MOUSE_MOVE = "mouse_move"
+
+        /** click の action。 */
+        private const val ACTION_CLICK = "click"
+
+        /** hold_mouse の action。 */
+        private const val ACTION_HOLD_MOUSE = "hold_mouse"
+
+        /** scroll の action。 */
+        private const val ACTION_SCROLL = "scroll"
+
+        /** ホットバーのスロット 0〜8 を選ぶ数字キー。 */
+        private val HOTBAR_KEYS: List<KeySym> = listOf(
+            KeySym.DIGIT_1, KeySym.DIGIT_2, KeySym.DIGIT_3, KeySym.DIGIT_4, KeySym.DIGIT_5,
+            KeySym.DIGIT_6, KeySym.DIGIT_7, KeySym.DIGIT_8, KeySym.DIGIT_9,
+        )
+
+        /** テストの終わりに押したままの入力を離す待ちの上限（xdotool 2 回分）。 */
+        private val RELEASE_TIMEOUT: Duration = 30.seconds
+
+        /** 押したままの入力を離せなかったプレイヤーを起動し直す理由。 */
+        const val DIRTY_HELD_INPUT_REASON: String = "keys or mouse buttons held by the previous test could not be released"
+
+        /** チャット欄が開くまで待つ時間。 */
         private val CHAT_OPEN_WAIT: Duration = 500.milliseconds
 
-        /** 撮影の待ちの上限（player_session.py:116）。 */
+        /** 撮影の待ちの上限。 */
         private val SCREENSHOT_TIMEOUT: Duration = 15.seconds
 
         /** 撮影の待ちの間隔。 */
@@ -611,10 +811,10 @@ internal class PlayerSession(
         /** 書き込みが終わったと見なすまでサイズが変わらない時間。 */
         private val SCREENSHOT_STABLE: Duration = 500.milliseconds
 
-        /** クライアントを止める猶予（client.py:103）。 */
+        /** クライアントを止める猶予。 */
         private val CLIENT_GRACE: Duration = 10.seconds
 
-        /** Xvfb を止める猶予（xvfb.py:47）。 */
+        /** Xvfb を止める猶予。 */
         private val DISPLAY_GRACE: Duration = 5.seconds
 
         /** プレイヤーのクライアントとディスプレイを作る（起動はしない）。 */
@@ -629,6 +829,7 @@ internal class PlayerSession(
                 clientDir = dirs.clientDir(profile.name),
                 heap = server.definition.clientHeap,
                 launchLog = dirs.launchLog(profile.name),
+                language = profile.minecraftLanguage,
             )
             return PlayerSession(server, profile, client, VirtualDisplay(dirs.xvfbLog(profile.name)))
         }

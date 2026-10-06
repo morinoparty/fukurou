@@ -23,6 +23,9 @@ internal object PaperPlayerCommands : PlayerCommands, WorldCommands, CommandEcho
     override fun give(player: String, item: Key, count: Int): List<CommandCall> =
         listOf(VanillaCommands.give(player, item, count))
 
+    override fun rotate(player: String, yaw: Float, pitch: Float): List<CommandCall> =
+        listOf(VanillaCommands.rotate(player, yaw, pitch))
+
     override fun fill(from: BlockPos, to: BlockPos, block: String, world: Key): List<CommandCall> =
         listOf(VanillaCommands.fill(from, to, block, world))
 

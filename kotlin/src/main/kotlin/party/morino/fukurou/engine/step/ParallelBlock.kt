@@ -5,7 +5,7 @@ import party.morino.fukurou.result.StepEvent
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 実行中の parallel ブロック 1 つの状態（run/parallel.py の Lane.current と StepExecutor.cancel の移植）。
+ * 実行中の parallel ブロック 1 つの状態（各レーンで実行中のステップと、その取り消し）。
  *
  * レーンごとに実行中のステップを覚え、期限を過ぎても戻らないレーンのステップを timeout で記録できるようにする。
  * レーンを打ち切った理由（期限切れ・サーバーの死亡）も持ち、打ち切られたステップはその理由で failed になる。

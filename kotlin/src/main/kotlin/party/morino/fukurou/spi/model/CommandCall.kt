@@ -1,7 +1,7 @@
 package party.morino.fukurou.spi.model
 
 /**
- * 計画されたコマンド。ignore は応答にこの断片があればエラー扱いしない（isolation.py:37 ResetCommand と同じ）。
+ * 計画されたコマンド。ignore は応答にこの断片があればエラー扱いしない。
  *
  * @property command コマンド（先頭の "/" は付けない）
  * @property ignore エラーとみなさない応答の断片

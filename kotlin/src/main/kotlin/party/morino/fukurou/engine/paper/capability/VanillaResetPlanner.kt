@@ -10,13 +10,13 @@ import party.morino.fukurou.world.Location
 import party.morino.fukurou.world.Worlds
 
 /**
- * テストの前のリセットのコマンド列（run/isolation.py:70-130 reset_commands の移植）。純粋。
+ * テストの前のリセットのコマンド列。純粋。
  *
  * 参加者は参加済みの全員で、駐機（parked）は無い。順序に意味がある:
  * 先に参加プレイヤーを移してからアリーナを fill する（逆だと足場が消えて落下し、減った体力がスクリーンショットに残る）。
  */
 internal object VanillaResetPlanner : ResetPlanner {
-    /** 既定のスロットの y（isolation.py SLOT_Y）。 */
+    /** 既定のスロットの y。 */
     private const val SLOT_Y = -60.0
 
     /** 既定のスロットの z。原点の列（x=0）は利用者の fixture が柱を建てることが多いので避ける。 */
@@ -54,7 +54,7 @@ internal object VanillaResetPlanner : ResetPlanner {
             calls += listOf(
                 CommandCall("clear $name", player = name),
                 CommandCall("effect clear $name", player = name),
-                // 末尾の true は粒子を隠す（isolation.py と同じ）
+                // 末尾の true は粒子を隠す
                 CommandCall("effect give $name minecraft:instant_health 1 $EFFECT_AMPLIFIER true", player = name),
                 CommandCall("effect give $name minecraft:saturation 1 $EFFECT_AMPLIFIER true", player = name),
                 CommandCall("experience set $name 0 points", player = name),
@@ -67,10 +67,10 @@ internal object VanillaResetPlanner : ResetPlanner {
         return calls
     }
 
-    /** spawns に無いプレイヤーの位置。x を 2 ブロックずつずらして横に並べる（isolation.py default_slot）。 */
+    /** spawns に無いプレイヤーの位置。x を 2 ブロックずつずらして横に並べる。 */
     fun defaultSlot(index: Int): Location = Location(0.5 + 2 * index, SLOT_Y, SLOT_Z, 0f, 0f)
 
-    /** 原点を中心とした size×size、地表から height ブロックの範囲を空気にし、地面を 4 層で敷き直す（isolation.py arena_commands）。 */
+    /** 原点を中心とした size×size、地表から height ブロックの範囲を空気にし、地面を 4 層で敷き直す。 */
     fun arenaCommands(arena: Arena): List<CommandCall> {
         val low = -(arena.size / 2)
         val high = low + arena.size - 1
@@ -87,7 +87,7 @@ internal object VanillaResetPlanner : ResetPlanner {
         )
     }
 
-    /** オーバーワールドは isolation.py と同じ素の tp、それ以外は execute in で次元を決める。 */
+    /** オーバーワールドは素の tp、それ以外は execute in で次元を決める。 */
     private fun teleport(player: String, to: Location): CommandCall =
         if (to.world == Worlds.OVERWORLD) {
             VanillaCommands.plainTeleport(player, to.toCommandArgs())
@@ -95,7 +95,7 @@ internal object VanillaResetPlanner : ResetPlanner {
             VanillaCommands.teleport(player, to)
         }
 
-    /** spawnpoint は角度を 1 つ（yaw）しか取らないため、座標の 3 つだけを使う（isolation.py spawnpoint_of）。 */
+    /** spawnpoint は角度を 1 つ（yaw）しか取らないため、座標の 3 つだけを使う。 */
     private fun spawnpoint(player: String, spawn: Location): CommandCall {
         val coordinates = Location(spawn.x, spawn.y, spawn.z).toCommandArgs()
         val command = "spawnpoint $player $coordinates"

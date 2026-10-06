@@ -53,7 +53,7 @@ public data class TestResult(
     val durationMs: Long? = null,
 ) {
     init {
-        // 飛ばした理由が無いと、ビューアで「なぜ走らなかったか」を示せない（model.py の検証と同じ）
+        // 飛ばした理由が無いと、ビューアで「なぜ走らなかったか」を示せない
         require(status != TestStatus.SKIPPED || !skipReason.isNullOrEmpty()) {
             "skipReason is required when status is 'skipped'"
         }

@@ -27,14 +27,13 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-      # 既定では利用者のリポジトリを見て uv の版とキャッシュキーを決めてしまうため、fukurou 自身を基準にする
+    # 解決は fukurou の Kotlin の CLI（party.morino.fukurou.cli.FukurouCli）で行うので、Gradle を動かす JDK を用意する
+    - uses: actions/setup-java@v6
       with:
-        version: "0.12.18"
-        working-directory: ${{ github.action_path }}/..
-        cache-dependency-glob: uv.lock
-        cache-suffix: fukurou
-        ignore-empty-workdir: "true"
+        distribution: temurin
+        java-version: "21"
+
+    - uses: gradle/actions/setup-gradle@8379f6a1328ee0e06e2bb424dadb7b159856a326 # v4.4.0
 
     - name: Resolve versions from the Mojang manifest and the Paper API
       id: resolve
@@ -45,7 +44,23 @@ runs:
         MAX_VERSIONS: ${{ inputs.max-versions }}
         PAPER_CHANNEL: ${{ inputs.paper-channel }}
       run: |
-        # このアクションは versions/ にあるため、Python プロジェクトは一つ上のディレクトリ
-        matrix="$(uv run --frozen --no-dev --project "$GITHUB_ACTION_PATH/.." fukurou versions "$MINECRAFT_VERSION" --max-versions "$MAX_VERSIONS" --paper-channel "$PAPER_CHANNEL")"
+        # --args は Gradle が空白で分けるので、空白や引用符を含む値はここで止める（どの入力にも正しい値には含まれない）
+        for value in "$MINECRAFT_VERSION" "$MAX_VERSIONS" "$PAPER_CHANNEL"; do
+          if [ -z "$value" ] || [[ "$value" =~ [[:space:]\"\'\\] ]]; then
+            echo "::error::Invalid input: '$value'."
+            exit 2
+          fi
+        done
+        # このアクションは versions/ にあるため、Gradle のプロジェクトは ../kotlin。
+        # wrapper のダウンロードの表示などが標準出力に混ざるので、結果は --output のファイルで受け取る
+        project="$GITHUB_ACTION_PATH/../kotlin"
+        output="$(mktemp)"
+        "$project/gradlew" -p "$project" -q --console=plain fukurouCli \
+          --args="versions $MINECRAFT_VERSION --max-versions $MAX_VERSIONS --paper-channel $PAPER_CHANNEL --output $output"
+        if ! jq -e 'type == "array"' "$output" > /dev/null; then
+          echo "::error::fukurou versions did not write a JSON array."
+          exit 1
+        fi
+        matrix="$(jq -c '.' "$output")"
         echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
         echo "Minecraft versions for \`$MINECRAFT_VERSION\`: \`$matrix\`" >> "$GITHUB_STEP_SUMMARY"

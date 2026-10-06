@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "result.json written by fukurou run (schemaVersion 2).",
+  "description": "result.json written by fukurou for one server run (schemaVersion 2). Hand-maintained contract.",
   "$defs": {
     "ArenaInfo": {
       "properties": {

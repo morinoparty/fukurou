@@ -6,7 +6,7 @@ import { ShotLinks } from "../components/overview/ShotLinks";
 import { ScreenshotThumb } from "../components/ScreenshotThumb";
 import { StatusBadge } from "../components/StatusBadge";
 import type { ManifestRun } from "../contract";
-import { findScreenshot, findTest, runBadgeStatus, runLabel, supportedResult, testLabel } from "../lib/runs";
+import { findScreenshot, findTest, runBadgeStatus, runLabel, runsWithTest, supportedResult, testLabel } from "../lib/runs";
 import { useManifest } from "../manifest/useManifest";
 import { emptyBoxStyle, pageTitle, panelStyle, sectionTitleStyle } from "../styles";
 
@@ -41,7 +41,15 @@ export function ComparePage() {
     );
   }
 
-  const players = test.players;
+  // テストを含む run だけを並べ、プレイヤーごとにはそのプレイヤーが参加した run だけにする
+  // （v3 の複数サーバーのテストでは、プレイヤーによって居るサーバーが違う）
+  const runs = runsWithTest(manifest.runs, test.id);
+  const playerRuns = test.players
+    .map((player) => ({ player, runs: runs.filter((run) => playsIn(run, test.id, player)) }))
+    .filter((entry) => entry.runs.length > 0);
+  // どの run でもこの名前のスクリーンショットを撮らないプレイヤー（別のサーバーに居るプレイヤーなど）は枠を並べず、1 行で示す
+  const withShot = playerRuns.filter((entry) => entry.runs.some((run) => hasShot(run, test.id, entry.player, shot)));
+  const withoutShot = playerRuns.filter((entry) => !withShot.includes(entry)).map((entry) => entry.player);
   const crumbs = [
     {
       key: "test",
@@ -62,19 +70,39 @@ export function ComparePage() {
         Compare <code>{shot}</code>
       </h1>
       <ShotLinks testId={test.id} shots={test.shots} current={shot} />
-      {players.length === 0 && <p className={css({ color: "fg.muted" })}>This test has no players.</p>}
-      {players.map((player) => (
+      {playerRuns.length === 0 && <p className={css({ color: "fg.muted" })}>This test has no players.</p>}
+      {withShot.map(({ player, runs: shown }) => (
         <section key={player}>
           <h2 className={playerHeading}>{player}</h2>
           <div className={grid}>
-            {manifest.runs.map((run) => (
+            {shown.map((run) => (
               <CompareCell key={run.id} run={run} testId={test.id} player={player} shot={shot} />
             ))}
           </div>
         </section>
       ))}
+      {withoutShot.length > 0 && (
+        <p className={css({ fontSize: "sm", color: "fg.muted" })}>
+          No <code>{shot}</code> screenshot in any run for: {withoutShot.join(", ")}
+        </p>
+      )}
     </div>
   );
+}
+
+/** その run のテストにプレイヤーが居たか（players に居るか、スクリーンショットがあるか） */
+function playsIn(run: ManifestRun, testId: string, player: string): boolean {
+  const result = supportedResult(run);
+  const test = result ? findTest(result, testId) : undefined;
+  if (!test) return false;
+  return test.players.some((candidate) => candidate.name === player) || test.screenshots.some((shot) => shot.player === player);
+}
+
+/** その run でプレイヤーがこの名前のスクリーンショットを撮ったか */
+function hasShot(run: ManifestRun, testId: string, player: string, shot: string): boolean {
+  const result = supportedResult(run);
+  const test = result ? findTest(result, testId) : undefined;
+  return test !== undefined && findScreenshot(test, player, shot) !== undefined;
 }
 
 interface CompareCellProps {

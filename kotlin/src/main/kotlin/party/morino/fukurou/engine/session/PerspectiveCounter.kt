@@ -3,7 +3,7 @@ package party.morino.fukurou.engine.session
 import party.morino.fukurou.player.Perspective
 
 /**
- * ハーネスが送った F5 の回数から今の視点を数える（runner/player_session.py:21-22,95-107）。
+ * ハーネスが送った F5 の回数から今の視点を数える。
  *
  * F5 を押すたびに一人称 → 三人称（背面）→ 三人称（正面）と巡回するので、回数を 3 で割った余りが視点になる。
  * 画面を開いたまま押した F5 は数え損なうため、確実ではない（ベストエフォート）。

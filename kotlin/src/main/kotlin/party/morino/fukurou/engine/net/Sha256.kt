@@ -5,7 +5,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 
-/** SHA-256 の 16 進表記（小文字）を求める（net.py:65 sha256_file）。 */
+/** SHA-256 の 16 進表記（小文字）を求める。 */
 internal object Sha256 {
     /** 大きな jar でもメモリを使いすぎないよう、1 MiB ずつ読む。 */
     private const val CHUNK_SIZE = 1 shl 20
@@ -35,6 +35,6 @@ internal object Sha256 {
     /** 新しい SHA-256 の MessageDigest。 */
     fun newDigest(): MessageDigest = MessageDigest.getInstance("SHA-256")
 
-    /** ダイジェストを小文字の 16 進にする（Python の hexdigest と同じ表記）。 */
+    /** ダイジェストを小文字の 16 進にする。 */
     fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
 }

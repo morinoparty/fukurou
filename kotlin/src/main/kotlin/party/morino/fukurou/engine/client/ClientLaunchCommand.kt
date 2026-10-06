@@ -4,7 +4,7 @@ import java.net.InetSocketAddress
 import java.nio.file.Path
 
 /**
- * PortableMC の引数（runner/client.py:105 の _command）。純粋。
+ * PortableMC の引数。純粋。
  *
  * @property executable PortableMC の実行ファイル
  * @property mainDir 共有の Minecraft キャッシュ（--main-dir）

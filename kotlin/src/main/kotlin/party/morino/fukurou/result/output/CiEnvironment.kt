@@ -2,7 +2,7 @@ package party.morino.fukurou.result.output
 
 import party.morino.fukurou.result.model.suite.CiInfo
 
-/** GitHub Actions の環境変数から、実行元のリポジトリやコミットの情報を読む（result/ci.py）。 */
+/** GitHub Actions の環境変数から、実行元のリポジトリやコミットの情報を読む。 */
 internal object CiEnvironment {
     /**
      * GitHub Actions 上でなければ null を返す（ローカル実行では ci を null にする契約）。

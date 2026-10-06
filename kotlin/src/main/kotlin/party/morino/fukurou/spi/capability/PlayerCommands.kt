@@ -24,4 +24,7 @@ public interface PlayerCommands : Capability {
 
     /** アイテムを与える。 */
     public fun give(player: String, item: Key, count: Int): List<CommandCall>
+
+    /** 位置を変えずに向きだけを変える。 */
+    public fun rotate(player: String, yaw: Float, pitch: Float): List<CommandCall>
 }

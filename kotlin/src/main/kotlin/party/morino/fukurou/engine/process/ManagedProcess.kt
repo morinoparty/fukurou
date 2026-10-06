@@ -7,7 +7,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * setsid で起動した長寿命のプロセス（サーバー・クライアント・Xvfb）。runner/process.py:40-70 の移植。
+ * setsid で起動した長寿命のプロセス（サーバー・クライアント・Xvfb）。
  *
  * 止めるときはプロセスグループ全体へ kill -TERM / -KILL -- -<pgid> を送る。
  * pid と pgid が一致しない（setsid が fork した）場合は、子孫のスナップショットを直接止める。
@@ -62,7 +62,7 @@ internal class ManagedProcess(
     override fun toString(): String = "ManagedProcess($name, pid=$pid, groupKill=$groupKill)"
 
     private companion object {
-        /** SIGKILL の後に待つ時間（runner/process.py:61）。 */
+        /** SIGKILL の後に待つ時間。 */
         val KILL_WAIT: Duration = 10.seconds
     }
 }

@@ -11,7 +11,7 @@ import party.morino.fukurou.spi.plugin.ResolvedPlugin
 import java.nio.file.Path
 import kotlin.time.Duration
 
-/** tests/test_server.py のプラグイン確認のケース。 */
+/** プラグインの有効化の確認のケース。 */
 class PluginLogStateTest {
     private val paperLog = """
         [12:00:01 INFO]: [Example] Loading server plugin Example v1.0

@@ -5,7 +5,7 @@ import party.morino.fukurou.player.Player
 import party.morino.fukurou.server.ServerSpec
 
 /**
- * fukurou の CI の e2e 用の最小のサーバー（§8.4）。プラグインは入れず、プレイヤーは 2 人。
+ * fukurou の CI の e2e（SmokeTest）用の最小のサーバー。プラグインは入れず（エージェントだけ）、プレイヤーは 2 人。
  *
  * 種類は既定の Paper.fromProperties（CI が -Pfukurou.minecraftVersion を渡す）。
  * 2 人にするのは、同時のスクリーンショット（レーンの並行）と、あるプレイヤーの発言が別のクライアントに届くことを確かめるため。

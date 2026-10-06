@@ -3,7 +3,7 @@ package party.morino.fukurou.result.model.run
 import kotlinx.serialization.Serializable
 
 /**
- * テストしたサーバー。server は種類の id（Python のモデルは Literal["paper"] だが、種類を増やせるよう文字列にする）。
+ * テストしたサーバー。server は種類の id（今は "paper" だけだが、種類を増やせるよう文字列にする）。
  *
  * @property version Minecraft のバージョン
  * @property server サーバーの種類

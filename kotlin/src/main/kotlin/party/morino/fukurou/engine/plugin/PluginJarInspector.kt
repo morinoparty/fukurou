@@ -8,7 +8,7 @@ import java.util.zip.ZipException
 import java.util.zip.ZipFile
 
 /**
- * jar を開いて記述ファイルとクラスファイルの版を読み取る（plugins.py:87-113 PluginJar.inspect）。
+ * jar を開いて記述ファイルとクラスファイルの版を読み取る。
  */
 internal object PluginJarInspector {
     /** Paper プラグインの記述ファイルを優先し、無ければ Bukkit 形式を読む。 */

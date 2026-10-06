@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 import party.morino.fukurou.error.SetupException
 
 /**
- * Paper の 1 ビルド（fill v3 の応答、paper.py:28-53）。チャンネルは STABLE / BETA / ALPHA のいずれか。
+ * Paper の 1 ビルド（fill v3 の応答）。チャンネルは STABLE / BETA / ALPHA のいずれか。
  *
  * @property id ビルド番号
  * @property channel ビルドのチャンネル（大文字）

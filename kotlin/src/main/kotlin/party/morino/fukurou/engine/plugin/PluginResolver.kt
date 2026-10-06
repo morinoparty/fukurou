@@ -19,7 +19,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * 宣言したプラグインの取得元を、ダウンロード済み・検査済みの [ResolvedPlugin] にする（dependencies.py:110-126、plugins.py:69）。
+ * 宣言したプラグインの取得元を、ダウンロード済み・検査済みの [ResolvedPlugin] にする。
  *
  * Fukurou インスタンスごとに 1 つ使う。sha256 の無い URL はインスタンスごとに 1 回だけ取り直す。
  *
@@ -112,7 +112,7 @@ internal class PluginResolver(
         private val UNSAFE_PATH_CHARS = Regex("[^A-Za-z0-9._-]")
 
         /**
-         * URL のパスの末尾をファイル名にする（dependencies.py:45 file_name）。
+         * URL のパスの末尾をファイル名にする。
          *
          * Paper は拡張子が .jar のファイルしか読み込まないため、.jar で終わらない場合は URL から決まる名前にする。
          */

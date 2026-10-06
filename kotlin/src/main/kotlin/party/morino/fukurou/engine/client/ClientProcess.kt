@@ -19,7 +19,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * 1 プレイヤーの Minecraft クライアント（PortableMC で起動する、runner/client.py:33-110）。
+ * 1 プレイヤーの Minecraft クライアント（PortableMC で起動する）。
  * Quick Play でテスト用サーバーへ直接参加する。
  *
  * PortableMC の作業ディレクトリは tools/（portablemc の 2 つ上）。インストール時の出力は launchLog と同じ場所の
@@ -32,6 +32,7 @@ import kotlin.time.Duration.Companion.seconds
  * @property clientDir このプレイヤーの .minecraft（<workDir>/servers/<runId>/clients/<player>）
  * @property heap -Xmx
  * @property launchLog PortableMC の出力の書き出し先（<player>-launch.log）
+ * @property language options.txt の lang（Minecraft の言語コード）
  */
 internal class ClientProcess(
     val player: String,
@@ -41,6 +42,7 @@ internal class ClientProcess(
     val clientDir: Path,
     val heap: String,
     val launchLog: Path,
+    val language: String = "en_us",
 ) {
     /** インストール（--dry）の出力の書き出し先。 */
     val installLog: Path get() = launchLog.resolveSibling("$player-install.log")
@@ -73,7 +75,7 @@ internal class ClientProcess(
         runInterruptible(Dispatchers.IO) {
             Files.createDirectories(clientDir)
             // 初回起動の案内やポーズを抑える設定を、ゲームのファイルより先に置く
-            Files.writeString(clientDir.resolve("options.txt"), ClientOptions.TEXT)
+            Files.writeString(clientDir.resolve("options.txt"), ClientOptions.text(language))
         }
         // 同じバージョンのダウンロードを他のプレイヤーや JVM と重ねない
         CacheLock.withLock(mainDir.resolve(".install-${version.id}")) {
@@ -140,7 +142,7 @@ internal class ClientProcess(
     }
 
     private companion object {
-        /** インストーラーを止めるときの猶予（client.py:79）。 */
+        /** インストーラーを止めるときの猶予。 */
         val INSTALLER_GRACE: Duration = 5.seconds
 
         /** ClientDiedException に添える launch.log の行数。 */

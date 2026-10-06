@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import type { CSSProperties } from "react";
 import { css } from "styled-system/css";
 import type { ManifestRun } from "../../contract";
 import { formatDuration } from "../../lib/format";
@@ -11,6 +12,12 @@ import { runGridStyle } from "../overview/grid";
 import { PlayerCell } from "./PlayerCell";
 
 const row = css(panelStyle, runGridStyle, { p: "3" });
+// プレイヤーの顔ぶれが run ごとに違うときの行。列数は行ごとに決め（--players を行に置く）、
+// 1 人だけの run でスクリーンショットが横いっぱいに広がりすぎないよう列の幅に上限を付ける
+const ownRow = css(panelStyle, runGridStyle, {
+  p: "3",
+  md: { gridTemplateColumns: "11rem repeat(var(--players), minmax(0, 36rem))" },
+});
 const version = css({
   textStyle: "lg",
   fontWeight: "bold",
@@ -35,16 +42,22 @@ const emptyRow = css(emptyBoxStyle, { md: { gridColumn: "2 / -1" } });
 interface VersionRowProps {
   run: ManifestRun;
   testId: string;
+  /** この行に並べるプレイヤー（この run でテストに居た人） */
   players: string[];
+  /** 全行で顔ぶれが同じで、ページ上の見出し行と列がそろっているか。false ならカードの中にプレイヤー名を出す */
+  aligned: boolean;
 }
 
 /** テストページの1行（1バージョン）。左にバージョンとそのテストの状態、右にプレイヤーごとの最後のスクリーンショット */
-export function VersionRow({ run, testId, players }: VersionRowProps) {
+export function VersionRow({ run, testId, players, aligned }: VersionRowProps) {
   const result = supportedResult(run);
   const test = result ? findTest(result, testId) : undefined;
 
   return (
-    <div className={row}>
+    <div
+      className={aligned ? row : ownRow}
+      style={aligned ? undefined : ({ "--players": Math.max(players.length, 1) } as CSSProperties)}
+    >
       <div className={css({ minWidth: "0" })}>
         {test ? (
           <Link to="/runs/$runId/tests/$testId" params={{ runId: run.id, testId }} className={version}>
@@ -86,6 +99,7 @@ export function VersionRow({ run, testId, players }: VersionRowProps) {
             run={run}
             test={test}
             player={player}
+            showName={!aligned}
             joined={result?.players.find((candidate) => candidate.name === player)?.joined}
           />
         ))

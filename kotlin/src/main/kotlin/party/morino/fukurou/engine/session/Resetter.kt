@@ -7,7 +7,7 @@ import party.morino.fukurou.server.Isolation
 import party.morino.fukurou.spi.capability.ResetPlanner
 
 /**
- * ワールドと参加プレイヤーをテストの前の状態に戻す（run/session.py:180-210 reset の移植）。
+ * ワールドと参加プレイヤーをテストの前の状態に戻す。
  *
  * コマンドはステップとして記録しない（所要時間と失敗は ResetInfo に入る）。最初に失敗したコマンドで止める。
  * 終わりに mark したログのここまでの行を照合の対象から外す（logRanges には残る）。リセットのコマンドは
@@ -17,7 +17,7 @@ internal object Resetter {
     /**
      * 応答にこれがあれば、プロセスは生きていてもサーバーに居ない（キック・切断）。次のテストの前に起動し直す。
      *
-     * バニラの応答の文字列だが、ResetPlanner の SPI に「プレイヤーが居ない」の判定が無いのでここに置く（isolation.py:40 PLAYER_MISSING）。
+     * バニラの応答の文字列だが、ResetPlanner の SPI に「プレイヤーが居ない」の判定が無いのでここに置く。
      */
     private const val PLAYER_MISSING = "No player was found"
 

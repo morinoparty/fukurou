@@ -1,0 +1,6 @@
+name: FukurouE2eCompanion
+main: party.morino.fukurou.e2e.companion.FukurouE2eCompanionPlugin
+version: "${version}"
+api-version: "1.20"
+depend: [FukurouAgent]
+description: fukurou の e2e が使うタスク（e2e:echo など）を登録するコンパニオンプラグイン

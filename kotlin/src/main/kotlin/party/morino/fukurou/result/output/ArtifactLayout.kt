@@ -17,7 +17,7 @@ import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
 
 /**
- * 1 サーバー分の run ディレクトリ（<outDir>/<runId>/）の配置（run/artifacts.py、契約の §1）。
+ * 1 サーバー分の run ディレクトリ（<outDir>/<runId>/）の配置（契約の §1）。
  *
  * パスは run ディレクトリからの相対パス（/ 区切り）で result.json に書く。
  * サーバーやクライアントの本体・アセット・ワールドは含めない。

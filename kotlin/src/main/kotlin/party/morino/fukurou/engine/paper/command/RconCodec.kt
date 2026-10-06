@@ -7,7 +7,7 @@ import java.nio.ByteOrder
 import java.nio.charset.CodingErrorAction
 
 /**
- * RCON（Source RCON Protocol）のパケットの符号化と復号（server/rcon.py:44-66）。純粋。
+ * RCON（Source RCON Protocol）のパケットの符号化と復号。純粋。
  *
  * パケット = 本体の長さ（int32 LE）+ 本体。本体 = リクエスト ID（int32 LE）+ 種別（int32 LE）+ ペイロード（UTF-8）+ 終端の 2 バイト。
  */
@@ -69,7 +69,7 @@ internal object RconCodec {
         val body = ByteBuffer.wrap(readExactly(input, length)).order(ByteOrder.LITTLE_ENDIAN)
         val requestId = body.int
         val type = body.int
-        // 終端の 2 バイトを除いた残りが本文。Python の errors="replace" と同じく不正な並びは置き換える
+        // 終端の 2 バイトを除いた残りが本文。不正な UTF-8 の並びは置換文字にする
         val payloadBytes = ByteArray(length - BODY_OVERHEAD).also { body.get(it) }
         return Packet(requestId, type, decodeUtf8(payloadBytes))
     }
@@ -82,7 +82,7 @@ internal object RconCodec {
             .decode(ByteBuffer.wrap(bytes))
             .toString()
 
-    /** ちょうど size バイトを読む。足りないまま閉じたら EOFException（rcon.py _read_exactly）。 */
+    /** ちょうど size バイトを読む。足りないまま閉じたら EOFException。 */
     private fun readExactly(input: InputStream, size: Int): ByteArray {
         val data = input.readNBytes(size)
         if (data.size < size) throw EOFException("RCON connection closed by the server")

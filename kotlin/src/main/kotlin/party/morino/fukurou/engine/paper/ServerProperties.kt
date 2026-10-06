@@ -1,6 +1,6 @@
 package party.morino.fukurou.engine.paper
 
-/** server.properties の既定値と、利用者の上書き指定との合成（server/properties.py）。純粋。 */
+/** server.properties の既定値と、利用者の上書き指定との合成。純粋。 */
 internal object ServerProperties {
     /**
      * 再現性のためのフラットワールドなど、テスト用サーバーの既定値。

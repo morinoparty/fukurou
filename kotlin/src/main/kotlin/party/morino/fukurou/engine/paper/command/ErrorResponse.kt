@@ -4,13 +4,13 @@ import party.morino.fukurou.spi.ResponseCheck
 import party.morino.fukurou.spi.model.CommandCall
 
 /**
- * Paper（バニラ）の RCON の応答のエラー判定（run/isolation.py:21-33,48）。純粋。
+ * Paper（バニラ）の RCON の応答のエラー判定。純粋。
  *
  * RCON はコマンドの失敗を例外にせず応答文で返すので、応答の行頭の定型でエラーを見分ける。
  */
 internal object ErrorResponse : ResponseCheck {
     /**
-     * 応答がこれで始まる行を含めばコマンドは失敗している（isolation.py ERROR_RESPONSE そのまま）。
+     * 応答がこれで始まる行を含めばコマンドは失敗している。
      * "No player was found" は、プレイヤーが切断されているときの tp / clear などの応答。
      */
     val ERROR_RESPONSE: Regex = Regex(

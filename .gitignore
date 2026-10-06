@@ -1,10 +1,11 @@
+# ui/scripts と scripts の Python のテスト（標準ライブラリだけ）が作るキャッシュ
 __pycache__/
 *.pyc
-.venv/
 .fukurou-work/
 build/
+.gradle/
 node_modules/
 ui/viewer/dist/
 
-# fukurou run の既定の出力先
+# 手元で fukurou.outDir を指定しないときの出力先
 fukurou-out/

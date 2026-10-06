@@ -15,7 +15,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * GitHub のリリースに添付された jar の取得（dependencies.py:128-149 _fetch_github_asset）。
+ * GitHub のリリースに添付された jar の取得。
  *
  * dev-build のように同じタグで更新され続けるリリースもあるため、アセットの id と更新日時をキャッシュのキーにする。
  *

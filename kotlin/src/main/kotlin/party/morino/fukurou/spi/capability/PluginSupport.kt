@@ -12,7 +12,7 @@ public interface PluginSupport : Capability {
     /** プラグインを provision 済みのディレクトリへ入れる（Paper: plugins/ にコピー。同名は SetupException）。 */
     public fun install(serverDir: Path, plugins: List<ResolvedPlugin>)
 
-    /** 有効化の確認（Paper: plugin_checks.py:82 check_plugins の移植、15 s）。戻り値は file 名 → enabled。 */
+    /** 有効化の確認（Paper では 15 s）。戻り値は file 名 → enabled。 */
     public suspend fun checkEnabled(
         readLog: () -> String,
         plugins: List<ResolvedPlugin>,

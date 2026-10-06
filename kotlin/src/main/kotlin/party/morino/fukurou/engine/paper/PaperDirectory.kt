@@ -10,7 +10,7 @@ import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.BasicFileAttributes
 
-/** 実行ごとにまっさらなサーバーディレクトリを用意する（server/server_dir.py:29-70）。 */
+/** 実行ごとにまっさらなサーバーディレクトリを用意する。 */
 internal object PaperDirectory {
     /** 設定ファイルの名前。 */
     private const val PROPERTIES_FILE = "server.properties"

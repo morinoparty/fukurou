@@ -3,7 +3,7 @@ package party.morino.fukurou.result.model.suite
 import kotlinx.serialization.Serializable
 
 /**
- * GitHub Actions 上で実行したときだけ埋める（result/ci.py）。
+ * GitHub Actions 上で実行したときだけ埋める。
  *
  * @property repository GITHUB_REPOSITORY
  * @property sha GITHUB_SHA

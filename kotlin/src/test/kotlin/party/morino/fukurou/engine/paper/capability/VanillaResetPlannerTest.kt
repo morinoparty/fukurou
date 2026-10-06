@@ -10,7 +10,7 @@ import party.morino.fukurou.server.Isolation
 import party.morino.fukurou.world.GameMode
 import party.morino.fukurou.world.Location
 
-/** tests/test_isolation.py の golden を固定する。 */
+/** リセットのコマンド列の golden を固定する。 */
 class VanillaResetPlannerTest {
     private val alice = PlayerProfile("Alice", op = true)
     private val bob = PlayerProfile("Bob")
@@ -19,7 +19,7 @@ class VanillaResetPlannerTest {
         VanillaResetPlanner.plan(participants, reset).map { it.command }
 
     @Test
-    @DisplayName("Moves players before filling the arena, in the exact Python order")
+    @DisplayName("Moves players before filling the arena, in the exact golden order")
     fun goldenOrder() {
         val result = commands(listOf(alice, bob))
         assertEquals(

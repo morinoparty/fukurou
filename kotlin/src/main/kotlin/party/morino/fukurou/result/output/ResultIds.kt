@@ -1,7 +1,7 @@
 package party.morino.fukurou.result.output
 
 /**
- * result.json の id とテストの id の規則（§6.3、§5.5、build_manifest.py の SAFE_ID / SAFE_TEST_ID）。
+ * result.json の id とテストの id の規則（§6.3、§5.5）。
  *
  * すべて純粋関数。JVM 内での重複の管理（取った id の集合）は呼び出し側（LeaseRegistry）が持つ。
  */
@@ -97,7 +97,7 @@ internal object ResultIds {
      */
     fun checkTestId(id: String): String {
         require(TEST_ID.matches(id)) { "test id '$id' must match ${TEST_ID.pattern}" }
-        // "." と ".." はパスとして特別な意味を持つので使わせない（build_manifest.py の SAFE_ID と同じ）
+        // "." と ".." はパスとして特別な意味を持つので使わせない
         require(id != "." && id != "..") { "test id '$id' is not usable as a directory name" }
         return id
     }

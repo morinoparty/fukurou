@@ -11,14 +11,14 @@ internal object PlayerPointers {
     /**
      * NAME / UUID / DISPLAY_NAME / LOCALE を持つ Pointers。
      *
-     * LOCALE は options.txt の lang:en_us（ClientOptions）に合わせて Locale.US にする。
+     * LOCALE はクライアントの options.txt の lang（ClientOptions）と同じ、プロフィールの locale にする。
      */
-    fun of(name: String, uuid: UUID): Pointers =
+    fun of(name: String, uuid: UUID, locale: Locale = Locale.US): Pointers =
         Pointers.builder()
             .withStatic(Identity.NAME, name)
             .withStatic(Identity.UUID, uuid)
             // 表示名はサーバーから取れないので、名前をそのまま使う
             .withStatic(Identity.DISPLAY_NAME, Component.text(name))
-            .withStatic(Identity.LOCALE, Locale.US)
+            .withStatic(Identity.LOCALE, locale)
             .build()
 }

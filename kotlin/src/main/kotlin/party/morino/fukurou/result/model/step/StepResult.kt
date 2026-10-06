@@ -10,7 +10,7 @@ import party.morino.fukurou.result.model.enums.StepStatus
  * @property phase どの層から来たか
  * @property fixture phase が fixture のときだけ fixture の名前
  * @property on "server" / プレイヤー名 / null（共通アクション）
- * @property action アクション名（Python と同じ文字列）
+ * @property action アクション名
  * @property label 一覧表示用の短い説明
  * @property status 結果
  * @property durationMs 所要時間

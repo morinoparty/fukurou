@@ -12,7 +12,7 @@ import java.nio.file.Path
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-/** xdotool・xmodmap・kill・java -XshowSettings のような短い道具を実行する（x11_input.py:86）。 */
+/** xdotool・xmodmap・kill・java -XshowSettings のような短い道具を実行する。 */
 internal object ExternalCommand {
     /**
      * 道具の実行結果。

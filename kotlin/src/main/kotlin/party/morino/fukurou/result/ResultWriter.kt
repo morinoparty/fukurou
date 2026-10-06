@@ -12,7 +12,7 @@ import java.nio.file.StandardOpenOption
 import kotlin.io.path.createDirectories
 
 /**
- * result.json をアトミックに書き出す（result/recorder.py:375-387 write_result）。
+ * result.json をアトミックに書き出す。
  *
  * 途中で中断されても壊れたファイルが残らないよう、同じディレクトリの一時ファイルに書いてから置き換える。
  *
@@ -42,7 +42,7 @@ internal class ResultWriter(val file: Path) {
 
     /** JSON の設定。 */
     companion object {
-        /** §6.3 の設定。null も既定値も省かず、Python（indent=2）と同じ字下げで書く。 */
+        /** §6.3 の設定。null も既定値も省かず、2 文字の字下げで書く。 */
         @OptIn(ExperimentalSerializationApi::class)
         val JSON: Json = Json {
             encodeDefaults = true

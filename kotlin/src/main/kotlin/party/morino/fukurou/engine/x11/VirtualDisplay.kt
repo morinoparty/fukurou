@@ -18,7 +18,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 /**
- * 1 プレイヤー専用の Xvfb（runner/xvfb.py）。
+ * 1 プレイヤー専用の Xvfb。
  *
  * 1 つのディスプレイに複数のクライアントを置くとキーボードフォーカスを奪い合うため、
  * クライアント 1 つにつきディスプレイを 1 つ用意する。
@@ -83,7 +83,7 @@ internal class VirtualDisplay(
         // -noreset: 最後のクライアントが切断してもサーバーをリセットしない（GLFW が初期化時に一度切断するため）
         val argv = listOf("Xvfb", display, "-screen", "0", SCREEN, "-nolisten", "tcp", "-noreset")
         val launched = runInterruptible(Dispatchers.IO) {
-            // 番号の衝突で終了した試行や、再起動前の出力をエラーの手がかりとして残すため追記する（xvfb.py の "ab"）
+            // 番号の衝突で終了した試行や、再起動前の出力をエラーの手がかりとして残すため追記する
             Files.createDirectories(logFile.toAbsolutePath().parent)
             Files.writeString(
                 logFile,
@@ -134,7 +134,7 @@ internal class VirtualDisplay(
         /** 接続を確かめる間隔。 */
         val POLL: Duration = 200.milliseconds
 
-        /** 起動に失敗した Xvfb を止める猶予（xvfb.py の stop と同じ）。 */
+        /** 起動に失敗した Xvfb を止める猶予。 */
         val STOP_GRACE: Duration = 5.seconds
     }
 }

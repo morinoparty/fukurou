@@ -2,6 +2,7 @@ package party.morino.fukurou.result
 
 import party.morino.fukurou.result.model.enums.StepStatus
 import party.morino.fukurou.result.model.step.ParallelInfo
+import party.morino.fukurou.result.model.step.RepeatInfo
 import party.morino.fukurou.result.model.step.StepPhase
 import java.time.Instant
 
@@ -15,10 +16,11 @@ import java.time.Instant
  * @property phase どの層から来たか
  * @property fixture phase が fixture のときの名前
  * @property on "server" / プレイヤー名 / null
- * @property action アクション名（Python と同じ文字列）
+ * @property action アクション名
  * @property label 一覧表示用の短い説明
  * @property startedAt 開始時刻
  * @property parallel parallel ブロックの中ならその位置
+ * @property repeat repeat ブロックの中なら何回目か
  * @property status 結果（stepFinished のみ）
  * @property finishedAt 終了時刻（stepFinished のみ）
  * @property durationMs 所要時間（stepFinished のみ。放棄したレーンのステップは null）
@@ -34,6 +36,7 @@ internal data class StepEvent(
     val label: String,
     val startedAt: Instant,
     val parallel: ParallelInfo? = null,
+    val repeat: RepeatInfo? = null,
     val status: StepStatus? = null,
     val finishedAt: Instant? = null,
     val durationMs: Long? = null,

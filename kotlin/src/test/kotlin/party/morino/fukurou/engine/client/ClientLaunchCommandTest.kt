@@ -29,9 +29,12 @@ class ClientLaunchCommandTest {
     }
 
     @Test
-    @DisplayName("The options text is CLIENT_OPTIONS verbatim")
+    @DisplayName("The options text has the fixed settings and the player's language")
     fun options() {
-        assertEquals(12, ClientOptions.TEXT.lines().filter { it.isNotEmpty() }.size)
-        assertEquals(true, ClientOptions.TEXT.contains("lang:en_us\n") && ClientOptions.TEXT.endsWith("soundCategory_master:0.0\n"))
+        val english = ClientOptions.text("en_us")
+        assertEquals(12, english.lines().filter { it.isNotEmpty() }.size)
+        assertEquals(true, english.contains("lang:en_us\n") && english.endsWith("soundCategory_master:0.0\n"))
+        val japanese = ClientOptions.text("ja_jp")
+        assertEquals(true, japanese.contains("lang:ja_jp\n") && !japanese.contains("lang:en_us"))
     }
 }

@@ -4,6 +4,8 @@
 
 この文書は実装に合わせて整理した設計の要約であり、ファイル単位の構成や作業の分担は含まない。細部はコードの KDoc を正とする。
 
+> v3 で Python の実行系とシナリオは削除した（[v3-kotlin-only.md](v3-kotlin-only.md)）。この文書の `session.py:28` のような Python のファイルと行への参照は、移植元として `v2.2.1` のタグの `src/fukurou/` を指す。v3 で足した API（エージェント・イベント・execute・入力・流れの補助・画像）とアクションは v3-kotlin-only.md を、利用者向けの説明は [docs/usage.md](../usage.md) を参照する。
+
 ---
 
 ## 0. 結論
@@ -18,7 +20,7 @@
 | D6 | `GameServerExtension` のサブクラス 1 つ = 独立したサーバー 1 台 = `result.json` 1 つ。リースは JUnit の **ルート** ストアに拡張のクラスをキーにして置き、その拡張を使う全テストクラスで共有する。メモリ予算を超えるなら起動前に止め、使われていないリースは LRU で退避する。 | 拡張ごとに独立したサーバー。16 GB の runner を OOM にしない。 |
 | D7 | 引数の解決は **自分の拡張の型** と、fukurou の拡張がちょうど 1 つのときの `GameServer` だけ。`Player` は注入しない。 | `@ExtendWith` が 2 つあっても引数を取り合わない。 |
 | D8 | **期限。** テストごとのソフトな期限（既定 600 秒、Python と同じ）をステップの前に確かめ、すべての待ちをその残り時間で打ち切る。JUnit の timeout は保険（15 分、**SAME_THREAD**）。SEPARATE_THREAD は xdotool を操作し続ける幽霊スレッドを残すので使わない。 | |
-| D9 | 並行のレーンは Python に従う。失敗したレーンは兄弟を止めない。`ServerUnavailableException` は止める。期限はすべてを止め、30 秒の猶予の後も生きているレーンは見捨ててプレイヤーを stranded にする。ブロックのステップはレーン 0 から順にまとめて書く。 | parallel.py:1-14、contract.md:161。 |
+| D9 | 並行のレーンは Python に従う。失敗したレーンは兄弟を止めない。`ServerUnavailableException` は止める。期限はすべてを止め、30 秒の猶予の後も生きているレーンは見捨ててプレイヤーを stranded にする。ブロックのステップはレーン 0 から順にまとめて書く。 | parallel.py:1-14、contract.md の「Parallel and repeat blocks」。 |
 | D10 | プロセスは `setsid` で起動し、`kill -TERM/-KILL -- -<pgid>` で止める。 | `start_new_session` + `killpg` と同じ。 |
 | D11 | キーシムは `xmodmap -pke` で解決する。Xvfb の起動完了は `xdotool getdisplaygeometry`（本物の X のハンドシェイク）。 | |
 | D12 | result id = `<type.id>-<version>-<label>`（例: `paper-26.3-stamp-arena`）。label は `^[a-z0-9]+(?:-[a-z0-9]+)*$`、40 文字まで。新しい任意項目は `label` と `fukurou.runner`。`schemaVersion` は 2 のまま。 | ビューアと PR コメントがそのまま動く。 |
@@ -299,7 +301,7 @@ suspend fun main() = Fukurou.fromSystemProperties().use { fukurou ->
 ### 5.2 ステップ
 
 - 並行ブロックの外のステップは開始時に最終の index を得る。ブロックの中のステップは `BlockRecorder` がレーンごとに溜め、ブロックの終わりにレーン 0 から順に並べる（`startedAt` / `finishedAt` は実際の重なりのまま）。仮の id を参照する `failure.stepIndex` と `screenshots[].stepIndex` はそこで付け替える。
-- `repeat` は常に null。失敗の後のステップは（命令的な API では分からないので）書かない。
+- `repeat` は v2 では常に null だった。v3 では `repeat(n) {}` の中のステップに 1 要素の一覧 `[{block, iteration, of}]` を書く（v3-kotlin-only.md §2.3）。失敗の後のステップは（命令的な API では分からないので）書かない。
 - `phase` は `beforeEach` / `fixture`（`fixture` の名前付き）/ `test`。テストの外のステップは harness.log だけに残す。
 
 | API | `on` | `action` | `label` |
@@ -314,13 +316,13 @@ suspend fun main() = Fukurou.fromSystemProperties().use { fukurou ->
 | `screenshot(n)` | プレイヤー | `screenshot` | `n`（`screenshot` = artifact のパス） |
 | `awaitChat` / `assertNoChat` | プレイヤー | `wait_for_log` / `assert_no_log` | `\[CHAT\].*` を含むパターン |
 
-Python の action 文字列だけを使うので、ビューアと契約は変わらない。
+v2 ではここに挙げた（Python の実行系と同じ）action 文字列だけを使った。v3 で足した action（`query`、`execute`、`await_event`、`hold_key` など）は v3-kotlin-only.md §2 と [contract.md](../contract.md#steps) を参照する。`steps[].action` は enum ではないので、どちらもビューアと契約を変えない。
 
 ### 5.3 ルートの項目
 
 - `id` = `<type>-<version>-<label>`（JVM 内の重複は `-2`、`-3`…）。新しい任意項目 `label`。
 - `fukurou` = `{version, portablemc, runner: "kotlin"}`（`runner` は新しい任意項目）。
-- `minecraft` = `{version, server, build, channel}`。Kotlin のモデルは `server: String`（既定 `"paper"`）。Python のモデルは `Literal["paper"]` のまま（§6.4）。`java` = `{server: javaMajor}`。`plugins[]` = `{file, sha256, name, version, role, source, classFileMajor, enabled}`。
+- `minecraft` = `{version, server, build, channel}`。Kotlin のモデルは `server: String`（既定 `"paper"`）。契約のスキーマ（`schema/result.v2.json`）は `const: "paper"` のまま（§6.4）。`java` = `{server: javaMajor}`。`plugins[]` = `{file, sha256, name, version, role, source, classFileMajor, enabled}`。
 - `suite` = `{source: "junit:<拡張の FQCN>", sha256: <拡張の .class>, isolation, settle, gamemode, arena}`。`Isolation.None` は契約の enum に無いので `isolation: "reset"`、`settle: 0`、`arena: false` で表す。
 - `selection` = `{tests, tags, isolation: null, failFast: false}`。`players[]` は宣言したプレイヤー（参加で `joined`）。`sessions[]` は `initial` の後に作り直しごとの `fresh-server`（`@FreshServer`・退避後の再取得）。
 - `summary` と `status` は Python の `summarize_tests` / `derive_run_status` と同じ（`failure` があれば `error`、failed / error のテストがあれば `failed`、それ以外は `passed`）。`ci` は `GITHUB_ACTIONS=true` のときの `GITHUB_*`。
@@ -398,6 +400,6 @@ data class Minestom(
 
 ### 6.4 2 つ目の種類を出すときに要る契約の変更（今はしない）
 
-- Python の `MinecraftInfo.server` を `Literal["paper"]` から `str` に広げ、スキーマと `contract.ts` を作り直す。既存の値の意味は変わらないので追加の変更。ビューアはそのまま表示する。
+- `schema/result.v2.json` の `minecraft.server`（今は `const: "paper"`）を文字列に広げ、`contract.ts` を合わせる。既存の値の意味は変わらないので追加の変更。ビューアはそのまま表示する。
 - プロキシの `minecraft.version` はクライアントのバージョン。`build` / `channel` はすでに null を許す。
 - バックエンドを持つプロキシはサーバーごとに result を 1 つ作る。ビューアでまとめたくなれば `result.backends: [runId]` のような項目を追加で足す。

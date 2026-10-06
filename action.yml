@@ -1,5 +1,5 @@
 name: fukurou
-description: Run a suite of in-game tests against one Minecraft (Paper) version in one server session, with real vanilla clients, and upload screenshots, logs and result.json.
+description: Run your Kotlin (JUnit) fukurou tests against one Minecraft (Paper) version with real vanilla clients, and upload screenshots, logs and result.json.
 author: morinoparty
 branding:
   icon: camera
@@ -12,80 +12,40 @@ inputs:
   minecraft-version:
     description: 'A single Minecraft version, such as "1.21.11". Use morinoparty/fukurou/versions to expand ranges into a matrix.'
     required: true
-  suite:
-    description: Path to a suite file (fukurou.yml), relative to the workspace. Its scenarios globs, players and fixtures are shared by every test.
-    required: false
-    default: ""
-  scenarios:
-    description: Glob patterns of scenario files to run, relative to the workspace, separated by newlines or commas.
-    required: false
-    default: ""
-  scenario:
-    description: Inline scenario (JSON or YAML), run as the test "inline". Combine freely with the other selection inputs.
-    required: false
-    default: ""
-  scenario-file:
-    description: Path to a scenario file (JSON or YAML), relative to the workspace. Multiple lines run one test each.
-    required: false
-    default: ""
-  tests:
-    description: Only run tests whose id matches one of these ids or glob patterns, separated by newlines or commas. Empty runs every selected test.
-    required: false
-    default: ""
-  tags:
-    description: Only run tests that have one of these tags, separated by newlines or commas. Combined with "tests", a test must match both.
-    required: false
-    default: ""
-  isolation:
-    description: 'Force "reset" or "fresh-server" isolation for every test, overriding what each test and the suite declare. Empty keeps each test''s own isolation.'
-    required: false
-    default: ""
-  fail-fast:
-    description: Set to "true" to stop the suite at the first failed or errored test, skipping the rest.
-    required: false
-    default: "false"
-  plugins-dir:
-    description: Directory that contains the plugin jars under test.
-    required: false
-    default: ${{ github.workspace }}
-  plugins:
-    description: Glob patterns for plugin jars inside plugins-dir, separated by newlines or commas. An empty string installs no plugins.
-    required: false
-    default: "*.jar"
-  dependencies:
-    description: 'YAML list of extra plugins to download: {url, sha256?} or {github: owner/repo, tag, asset}.'
-    required: false
-    default: ""
-  server-properties:
-    description: Extra server.properties lines ("key=value", one per line).
-    required: false
-    default: ""
-  server-files:
-    description: Directory whose contents are copied into the server directory before it starts (for example plugins/<Name>/config.yml).
-    required: false
-    default: ""
-  server-build:
-    description: Paper build number. Defaults to the newest build accepted by paper-channel. An explicit build is used even when its channel is less stable (with a warning).
-    required: false
-    default: ""
   paper-channel:
     description: 'Least stable Paper build channel to accept: "stable" (only stable builds), "beta" (beta or stable) or "alpha" (any build). The newest accepted build is used, and the run fails when the version has none.'
     required: false
     default: stable
-  java-version:
-    description: 'Java major version for the server, or "auto" to pick max(the version Mojang requires, the version the plugins are compiled for).'
+  paper-build:
+    description: Paper build number. Defaults to the newest build accepted by paper-channel. An explicit build is used even when its channel is less stable (with a warning).
     required: false
-    default: auto
+    default: ""
+  working-directory:
+    description: Directory of the Gradle build that contains the fukurou tests (where ./gradlew is), relative to the workspace.
+    required: false
+    default: "."
+  gradle-task:
+    description: Gradle task(s) that run the fukurou tests, separated by spaces.
+    required: false
+    default: gameTest
+  gradle-args:
+    description: Extra Gradle arguments, separated by spaces or newlines (for example "-Pfukurou.missingHost=fail --info"). Quoting is not supported.
+    required: false
+    default: ""
+  java-version:
+    description: Java version that runs Gradle and the tests. The Minecraft server's Java is picked (and downloaded if needed) by fukurou itself.
+    required: false
+    default: "21"
   work-dir:
     description: Working directory for the server, clients and caches. Defaults to "$RUNNER_TEMP/fukurou-work".
     required: false
     default: ""
   out-dir:
-    description: Output directory for result.json, screenshots and logs. Defaults to "$RUNNER_TEMP/fukurou-out".
+    description: Output directory for result.json, screenshots and logs (one subdirectory per server run). Defaults to "$RUNNER_TEMP/fukurou-out".
     required: false
     default: ""
   upload-artifact:
-    description: Set to "true" to upload out-dir as an artifact (also when the run fails).
+    description: Set to "true" to upload out-dir as an artifact (also when the tests fail).
     required: false
     default: "true"
   artifact-name:
@@ -97,26 +57,26 @@ inputs:
     required: false
     default: "14"
   github-token:
-    description: Token for the GitHub API, used to download "github:" dependencies (avoids the unauthenticated rate limit and allows private repositories).
+    description: Token for the GitHub API, passed to the tests as GITHUB_TOKEN (used to download plugins from GitHub releases without the unauthenticated rate limit).
     required: false
     default: ${{ github.token }}
   skip-system-deps:
-    description: Set to "true" to skip installing Xvfb, xdotool and the OpenGL/OpenAL libraries with apt-get.
+    description: Set to "true" to skip installing Xvfb, xdotool, jq and the OpenGL/OpenAL libraries with apt-get.
     required: false
     default: "false"
 
 outputs:
   result:
-    description: '"passed", "failed" or "error", read from result.json''s run status ("error" when it is missing).'
+    description: '"passed", "failed" or "error", aggregated over every <out-dir>/*/result.json ("error" when there is none or any run errored).'
     value: ${{ steps.outputs.outputs.result }}
   tests-summary:
-    description: 'Test counts as JSON, read from result.json''s summary, for example {"total":3,"passed":2,"failed":1,"error":0,"skipped":0}. Empty object when result.json is missing.'
+    description: 'Test counts summed over every run as JSON, for example {"total":3,"passed":2,"failed":1,"error":0,"skipped":0}.'
     value: ${{ steps.outputs.outputs.tests-summary }}
   failed-tests:
-    description: Comma-separated ids of the tests whose status is "failed" or "error".
+    description: 'Comma-separated "<run label or id>/<test id>" of the tests whose status is "failed" or "error".'
     value: ${{ steps.outputs.outputs.failed-tests }}
   result-file:
-    description: Path to result.json.
+    description: Path to the first result.json (empty when there is none).
     value: ${{ steps.outputs.outputs.result-file }}
   artifact-name:
     description: Name of the uploaded artifact.
@@ -135,10 +95,8 @@ runs:
       env:
         ACCEPT_EULA: ${{ inputs.accept-eula }}
         MINECRAFT_VERSION: ${{ inputs.minecraft-version }}
-        SUITE: ${{ inputs.suite }}
-        SCENARIOS: ${{ inputs.scenarios }}
-        SCENARIO: ${{ inputs.scenario }}
-        SCENARIO_FILE: ${{ inputs.scenario-file }}
+        JAVA_VERSION_INPUT: ${{ inputs.java-version }}
+        GRADLE_TASK: ${{ inputs.gradle-task }}
         ARTIFACT_NAME: ${{ inputs.artifact-name }}
         WORK_DIR: ${{ inputs.work-dir }}
         OUT_DIR: ${{ inputs.out-dir }}
@@ -152,9 +110,13 @@ runs:
           echo "::error::minecraft-version is required."
           exit 2
         fi
-        # suite / scenarios / scenario-file / scenario はどれも組み合わせられる。1 つも無ければ選択が空になる
-        if [ -z "$SUITE" ] && [ -z "$SCENARIOS" ] && [ -z "$SCENARIO_FILE" ] && [ -z "$SCENARIO" ]; then
-          echo "::error::Set at least one of suite, scenarios, scenario-file and scenario."
+        if [ -z "${GRADLE_TASK//[[:space:]]/}" ]; then
+          echo "::error::gradle-task is required."
+          exit 2
+        fi
+        # v2 の java-version はサーバーの Java（auto）だった。v3 では Gradle を動かす JDK で、サーバーの Java は fukurou が選ぶ
+        if [ "$JAVA_VERSION_INPUT" = "auto" ]; then
+          echo "::error::java-version is now the JDK that runs Gradle (default 21). fukurou picks the server's Java by itself, so remove java-version: auto."
           exit 2
         fi
         # 入力の既定値から別の入力を参照できないため、成果物名はここで決める
@@ -164,169 +126,80 @@ runs:
         # 入力の既定値でのコンテキストの展開に頼らず、ランナーの一時ディレクトリをここで既定値にする
         WORK_DIR="${WORK_DIR:-$RUNNER_TEMP/fukurou-work}"
         OUT_DIR="${OUT_DIR:-$RUNNER_TEMP/fukurou-out}"
+        # テストの JVM は working-directory で動くので、相対パスはワークスペースからの絶対パスにしておく
+        case "$WORK_DIR" in /*) ;; *) WORK_DIR="$GITHUB_WORKSPACE/$WORK_DIR" ;; esac
+        case "$OUT_DIR" in /*) ;; *) OUT_DIR="$GITHUB_WORKSPACE/$OUT_DIR" ;; esac
         {
           echo "artifact-name=$ARTIFACT_NAME"
           echo "work-dir=$WORK_DIR"
           echo "out-dir=$OUT_DIR"
         } >> "$GITHUB_OUTPUT"
 
-    - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-      # 既定では利用者のリポジトリを見て uv の版とキャッシュキーを決めてしまうため、fukurou 自身を基準にする
-      with:
-        version: "0.12.18"
-        working-directory: ${{ github.action_path }}
-        cache-dependency-glob: uv.lock
-        cache-suffix: fukurou
-        ignore-empty-workdir: "true"
-
-    # 選択引数のタイポ（存在しないスイート、0 件になるフィルタなど）を、apt もサーバーのダウンロードも
-    # 始める前に見つける。fukurou list は選択が不正または 0 件なら exit 2 になる
-    - name: Validate the suite
-      shell: bash
-      env:
-        SUITE: ${{ inputs.suite }}
-        SCENARIOS: ${{ inputs.scenarios }}
-        SCENARIO: ${{ inputs.scenario }}
-        SCENARIO_FILE: ${{ inputs.scenario-file }}
-        TESTS: ${{ inputs.tests }}
-        TAGS: ${{ inputs.tags }}
-        ISOLATION: ${{ inputs.isolation }}
-      run: |
-        args=(list)
-        [ -n "$SUITE" ] && args+=(--suite "$SUITE")
-        [ -n "$SCENARIOS" ] && args+=(--scenarios="$SCENARIOS")
-        [ -n "$SCENARIO_FILE" ] && args+=(--scenario-file="$SCENARIO_FILE")
-        [ -n "$SCENARIO" ] && args+=(--scenario="$SCENARIO")
-        [ -n "$TESTS" ] && args+=(--test="$TESTS")
-        [ -n "$TAGS" ] && args+=(--tag="$TAGS")
-        [ -n "$ISOLATION" ] && args+=(--isolation "$ISOLATION")
-        selected="$(uv run --frozen --no-dev --project "$GITHUB_ACTION_PATH" fukurou "${args[@]}")"
-        echo "Selected tests: $selected"
-
     - name: Install the virtual display and client dependencies
       if: inputs.skip-system-deps != 'true'
       shell: bash
-      # パッケージの一覧は setup/action.yml（Kotlin 版）と共有するスクリプトにまとめてある
+      # パッケージの一覧は setup/action.yml と共有するスクリプトにまとめてある
       run: bash "$GITHUB_ACTION_PATH/scripts/install-system-deps.sh"
 
-    - name: Determine the Java version for the server
-      id: java
-      shell: bash
-      env:
-        JAVA_VERSION_INPUT: ${{ inputs.java-version }}
-        MINECRAFT_VERSION: ${{ inputs.minecraft-version }}
-        PLUGINS_DIR: ${{ inputs.plugins-dir }}
-        PLUGINS: ${{ inputs.plugins }}
-      run: |
-        # auto のときは Mojang の要求とプラグインのクラスファイルの版から決める（Java 自体は不要）
-        if [ "$JAVA_VERSION_INPUT" = "auto" ]; then
-          version="$(uv run --frozen --no-dev --project "$GITHUB_ACTION_PATH" fukurou java \
-            --minecraft-version "$MINECRAFT_VERSION" \
-            --plugins-dir "$PLUGINS_DIR" \
-            --plugins="$PLUGINS")"
-        else
-          version="$JAVA_VERSION_INPUT"
-        fi
-        echo "Java for the server: $version"
-        echo "version=$version" >> "$GITHUB_OUTPUT"
-
-    - uses: actions/setup-java@v6
-      with:
-        distribution: temurin
-        java-version: ${{ steps.java.outputs.version }}
-
-    # PortableMC 本体と Mojang のアセット・ランタイムは大きいので、バージョンごとにキャッシュする
+    # PortableMC 本体と Mojang のアセット・ランタイム、サーバー用の JDK は大きいので、バージョンごとにキャッシュする
     - uses: actions/cache@v5
       with:
         path: |
           ${{ steps.prepare.outputs.work-dir }}/tools
           ${{ steps.prepare.outputs.work-dir }}/cache
-        key: fukurou-portablemc-5.0.4-${{ runner.os }}-${{ inputs.minecraft-version }}
+        key: fukurou-v3-portablemc-5.0.4-${{ runner.os }}-${{ inputs.minecraft-version }}
         # アセットはバージョン間で共有されるため、別バージョンのキャッシュからでも復元する
         restore-keys: |
-          fukurou-portablemc-5.0.4-${{ runner.os }}-
+          fukurou-v3-portablemc-5.0.4-${{ runner.os }}-
+
+    # Gradle とテストの JVM を動かす JDK。サーバーの Java は fukurou が Mojang の要求とプラグインから決める
+    - uses: actions/setup-java@v6
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java-version }}
+
+    - uses: gradle/actions/setup-gradle@8379f6a1328ee0e06e2bb424dadb7b159856a326 # v4.4.0
 
     - name: Run the tests
       id: run
       # 失敗しても成果物のアップロードと outputs の設定を続け、最後のステップで失敗させる
       continue-on-error: true
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         # GPU の無いランナーで Mesa のソフトウェアレンダリングを使う
         LIBGL_ALWAYS_SOFTWARE: "true"
-        # github: 形式の依存プラグインを GitHub API から取得するときに使う
+        # GitHub のリリースからプラグインを取得するときに使う
         GITHUB_TOKEN: ${{ inputs.github-token }}
-        MINECRAFT_VERSION: ${{ inputs.minecraft-version }}
-        SUITE: ${{ inputs.suite }}
-        SCENARIOS: ${{ inputs.scenarios }}
-        SCENARIO: ${{ inputs.scenario }}
-        SCENARIO_FILE: ${{ inputs.scenario-file }}
-        TESTS: ${{ inputs.tests }}
-        TAGS: ${{ inputs.tags }}
-        ISOLATION: ${{ inputs.isolation }}
-        FAIL_FAST: ${{ inputs.fail-fast }}
-        PLUGINS_DIR: ${{ inputs.plugins-dir }}
-        PLUGINS: ${{ inputs.plugins }}
-        DEPENDENCIES: ${{ inputs.dependencies }}
-        SERVER_PROPERTIES: ${{ inputs.server-properties }}
-        SERVER_FILES: ${{ inputs.server-files }}
-        SERVER_BUILD: ${{ inputs.server-build }}
-        PAPER_CHANNEL: ${{ inputs.paper-channel }}
-        WORK_DIR: ${{ steps.prepare.outputs.work-dir }}
-        OUT_DIR: ${{ steps.prepare.outputs.out-dir }}
+        # 設定は FukurouConfig が読む FUKUROU_* 環境変数で渡す（利用者のビルドスクリプトに -P の転送を書かせない）
+        FUKUROU_ACCEPT_EULA: "true"
+        FUKUROU_MINECRAFT_VERSION: ${{ inputs.minecraft-version }}
+        FUKUROU_PAPER_CHANNEL: ${{ inputs.paper-channel }}
+        FUKUROU_WORK_DIR: ${{ steps.prepare.outputs.work-dir }}
+        FUKUROU_OUT_DIR: ${{ steps.prepare.outputs.out-dir }}
+        PAPER_BUILD: ${{ inputs.paper-build }}
+        GRADLE_TASK: ${{ inputs.gradle-task }}
+        GRADLE_ARGS: ${{ inputs.gradle-args }}
       run: |
-        # 複数行の入力も壊れないよう、引数は配列に積んでそのまま渡す
-        # 値が "-" で始まってもオプションと誤認されないよう、自由記述の値は --name=value の形で渡す
-        args=(
-          run
-          --accept-eula
-          --minecraft-version "$MINECRAFT_VERSION"
-          --plugins-dir "$PLUGINS_DIR"
-          --plugins="$PLUGINS"
-          --java "$JAVA_HOME/bin/java"
-          --work-dir "$WORK_DIR"
-          --out-dir "$OUT_DIR"
-          --paper-channel "$PAPER_CHANNEL"
-        )
-        if [ -n "$SUITE" ]; then
-          args+=(--suite "$SUITE")
+        # paper-build は指定されたときだけ渡し、ジョブの env にある FUKUROU_PAPER_BUILD を空で潰さない
+        if [ -n "$PAPER_BUILD" ]; then
+          export FUKUROU_PAPER_BUILD="$PAPER_BUILD"
         fi
-        if [ -n "$SCENARIOS" ]; then
-          args+=(--scenarios="$SCENARIOS")
+        if [ ! -f ./gradlew ]; then
+          echo "::error::No Gradle wrapper (gradlew) in working-directory $PWD."
+          exit 2
         fi
-        if [ -n "$SCENARIO_FILE" ]; then
-          args+=(--scenario-file="$SCENARIO_FILE")
-        fi
-        if [ -n "$SCENARIO" ]; then
-          args+=(--scenario="$SCENARIO")
-        fi
-        if [ -n "$TESTS" ]; then
-          args+=(--test="$TESTS")
-        fi
-        if [ -n "$TAGS" ]; then
-          args+=(--tag="$TAGS")
-        fi
-        if [ -n "$ISOLATION" ]; then
-          args+=(--isolation "$ISOLATION")
-        fi
-        if [ "$FAIL_FAST" = "true" ]; then
-          args+=(--fail-fast)
-        fi
-        if [ -n "$DEPENDENCIES" ]; then
-          args+=(--dependencies="$DEPENDENCIES")
-        fi
-        if [ -n "$SERVER_PROPERTIES" ]; then
-          args+=(--server-properties="$SERVER_PROPERTIES")
-        fi
-        if [ -n "$SERVER_FILES" ]; then
-          args+=(--server-files "$SERVER_FILES")
-        fi
-        if [ -n "$SERVER_BUILD" ]; then
-          args+=(--server-build "$SERVER_BUILD")
-        fi
-        uv run --frozen --no-dev --project "$GITHUB_ACTION_PATH" fukurou "${args[@]}"
+        # タスクと引数は空白・改行で分ける。eval はせず、グロブの展開も止めてから単語に分割する
+        set -f
+        # shellcheck disable=SC2206
+        tasks=($GRADLE_TASK)
+        # shellcheck disable=SC2206
+        args=($GRADLE_ARGS)
+        set +f
+        bash ./gradlew --console=plain "${tasks[@]}" "${args[@]}"
 
-    # サーバーやクライアントの本体・アセットは out-dir に含まれないため、そのままアップロードしてよい
+    # サーバーやクライアントの本体・アセットは out-dir に含まれないため、そのままアップロードしてよい。
+    # out-dir には GameServerExtension ごとの run ディレクトリ（<run id>/result.json）が並ぶ
     - name: Upload screenshots, logs and result.json
       # 途中のセットアップが失敗しても、書けた分の結果は残す
       if: always() && steps.prepare.outcome == 'success' && inputs.upload-artifact == 'true'
@@ -343,83 +216,22 @@ runs:
       if: always() && steps.prepare.outcome == 'success'
       shell: bash
       env:
-        RESULT_FILE: ${{ steps.prepare.outputs.out-dir }}/result.json
-      run: |
-        # result.json が無い（引数の解析前に失敗した等）場合も error 扱いにし、outputs とステップサマリーの表をまとめて書く
-        python3 - "$RESULT_FILE" <<'PY'
-        import json
-        import os
-        import sys
+        OUT_DIR: ${{ steps.prepare.outputs.out-dir }}
+        MINECRAFT_VERSION: ${{ inputs.minecraft-version }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/summarize-results.sh"
 
-        result_file = sys.argv[1]
-        try:
-            with open(result_file, encoding="utf-8") as file:
-                result = json.load(file)
-        except (OSError, ValueError):
-            result = {}
-
-        status = result.get("status")
-        if status not in ("passed", "failed", "error"):
-            status = "error"
-        tests = result.get("tests", [])
-        summary = result.get("summary") or {}
-        failed_ids = [test["id"] for test in tests if test.get("status") in ("failed", "error")]
-
-        print(f"fukurou result: {status}")
-        github_output = os.environ.get("GITHUB_OUTPUT")
-        if github_output:
-            with open(github_output, "a", encoding="utf-8") as file:
-                file.write(f"result={status}\n")
-                file.write(f"tests-summary={json.dumps(summary, separators=(',', ':'))}\n")
-                file.write(f"failed-tests={','.join(failed_ids)}\n")
-                file.write(f"result-file={result_file}\n")
-
-        def cell(text):
-            # Markdown の表が壊れないよう、改行とパイプを潰す
-            return str(text).replace("\r", " ").replace("\n", " ").replace("|", "\\|")
-
-        def duration(test):
-            ms = test.get("durationMs")
-            return f"{ms / 1000:.1f}s" if isinstance(ms, (int, float)) else "–"
-
-        def failure_of(test):
-            failure = test.get("failure")
-            if isinstance(failure, dict) and failure.get("message"):
-                return f"{failure['message']} ({failure.get('phase')})"
-            reset = test.get("reset")
-            if isinstance(reset, dict) and reset.get("error"):
-                return reset["error"]
-            return test.get("skipReason") or ""
-
-        github_step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
-        if github_step_summary:
-            lines = [f"### fukurou: Minecraft {result.get('minecraft', {}).get('version', '?')}", ""]
-            run_failure = result.get("failure")
-            if isinstance(run_failure, dict):
-                lines.append(f"⚠️ **{run_failure.get('phase')}**: {cell(run_failure.get('message'))}")
-                lines.append("")
-            counts = ", ".join(
-                f"{summary.get(key, 0)} {key}" for key in ("passed", "failed", "error", "skipped") if summary.get(key)
-            )
-            lines.append(f"{summary.get('total', 0)} tests: {counts}" if counts else f"{summary.get('total', 0)} tests")
-            lines.append("")
-            if tests:
-                lines.append("| Test | Status | Duration | Failure |")
-                lines.append("| --- | --- | --- | --- |")
-                for test in tests:
-                    lines.append(
-                        f"| {cell(test.get('id'))} | {cell(test.get('status'))} | {duration(test)} | {cell(failure_of(test))} |"
-                    )
-                lines.append("")
-            with open(github_step_summary, "a", encoding="utf-8") as file:
-                file.write("\n".join(lines) + "\n")
-        PY
-
+    # Gradle が成功しても fukurou の run が passed とは限らない（キャッシュから復元された・fukurou のテストを
+    # 選ばなかった・結果を別の場所に書いた）。集計した result も見て、passed 以外なら失敗にする
     - name: Fail if the tests did not pass
-      if: always() && steps.prepare.outcome == 'success' && steps.run.outcome != 'success'
+      if: always() && steps.prepare.outcome == 'success' && (steps.run.outcome != 'success' || steps.outputs.outputs.result != 'passed')
       shell: bash
       env:
+        RUN_OUTCOME: ${{ steps.run.outcome }}
         RESULT: ${{ steps.outputs.outputs.result }}
       run: |
-        echo "::error::fukurou run did not pass (result: $RESULT)."
+        if [ "$RUN_OUTCOME" = "success" ]; then
+          echo "::error::Gradle succeeded, but the fukurou runs did not pass (result: ${RESULT:-unknown}). Check that the task runs the fukurou tests, is not restored from the build cache, and writes to out-dir."
+        else
+          echo "::error::fukurou tests did not pass (Gradle: $RUN_OUTCOME, result: ${RESULT:-unknown})."
+        fi
         exit 1

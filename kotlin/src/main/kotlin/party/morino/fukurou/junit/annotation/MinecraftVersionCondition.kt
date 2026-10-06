@@ -29,7 +29,7 @@ public class MinecraftVersionCondition : ExecutionCondition {
         val spec = VersionSpec.parse(annotation.spec)
         for (extension in FukurouExtensions.find(testClass)) {
             val version = typeOf(extension)?.minecraftVersion ?: continue
-            // Python の versions: と同じ理由の文言にする（ビューアや PR のコメントで同じに見える）
+            // 理由は "versions: <spec> does not include <version>" の決まった文言にする（ビューアや PR のコメントで同じに見える）
             if (!spec.contains(version)) return ConditionEvaluationResult.disabled("versions: ${annotation.spec} does not include ${version.id}")
         }
         return ConditionEvaluationResult.enabled("versions: ${annotation.spec}")

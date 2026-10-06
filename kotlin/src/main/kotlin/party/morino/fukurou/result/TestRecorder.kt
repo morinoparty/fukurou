@@ -19,12 +19,12 @@ import java.time.Clock
 import java.time.Instant
 
 /**
- * テスト 1 件の結果（result/recorder.py:78-257 TestRecorder）。
+ * テスト 1 件の結果。
  *
  * start() までは skipped（not run）で、実行した分だけ内容が埋まる。最初の失敗だけを残し、
  * finish() / skip() の後に届いた記録（期限切れで置き去りにしたレーンなど）は警告を出して無視する。
  *
- * Python と違ってステップを前もって計画できないので、steps には実際に始まったステップだけが並ぶ。
+ * ステップを前もって計画できないので、steps には実際に始まったステップだけが並ぶ。
  * parallel のステップは BlockRecorder に溜め、ブロックの終了時にレーン 0 から添字を付ける。
  *
  * @param planned 計画したテスト
@@ -96,7 +96,7 @@ internal class TestRecorder(
     val isNotRun: Boolean
         @Synchronized get() = !finished && skipReason == NOT_RUN
 
-    /** skipped（理由あり）/ 失敗の status / passed。終わる前の書き出しでは成功とは見なさない（recorder.py:99）。 */
+    /** skipped（理由あり）/ 失敗の status / passed。終わる前の書き出しでは成功とは見なさない。 */
     val status: TestStatus
         @Synchronized get() = when {
             skipReason != null -> TestStatus.SKIPPED
@@ -151,7 +151,7 @@ internal class TestRecorder(
         // 猶予の間に返ったレーンのステップは、ブロックが閉じるまで BlockRecorder の中にある
         val previous = index?.let { steps[it] } ?: blocks.find(event.provisionalId)
         if (previous?.status == StepStatus.FAILED && event.status == StepStatus.PASSED) {
-            // ハーネスの判断を優先し、そのステップが遅れて撮ったスクリーンショットも載せない（recorder.py:113-124）
+            // ハーネスの判断を優先し、そのステップが遅れて撮ったスクリーンショットも載せない
             warn("step ${event.provisionalId} of $id passed after it was recorded as failed; keeping the failure")
             screenshots.removeAll { (shot, step) -> step == event.provisionalId && shot.path == event.screenshot }
             return
@@ -181,6 +181,8 @@ internal class TestRecorder(
     @Synchronized
     fun addScreenshot(info: ScreenshotInfo, provisionalStepId: Long?) {
         if (finished) return warn("screenshot ${info.player}/${info.name} of $id was taken after the test was closed; ignoring it")
+        // eventually の試行での撮り直しは同じファイルを上書きしているので、前の記録を置き換える
+        screenshots.removeAll { (shot, _) -> shot.player == info.player && shot.name == info.name }
         screenshots += info to provisionalStepId
     }
 
@@ -308,8 +310,8 @@ internal class TestRecorder(
             error = error,
             screenshot = screenshot,
             parallel = parallel,
-            // Kotlin 版は repeat を記録しない（§6.2）
-            repeat = null,
+            // repeat は入れ子にできないので、外側から順の一覧は常に 1 つ
+            repeat = repeat?.let(::listOf),
             startedAt = Timestamps.millis(startedAt),
             finishedAt = finishedAt?.let(Timestamps::millis),
         )
@@ -322,7 +324,7 @@ internal class TestRecorder(
         /** 理由の分からないまま終わらなかったステップの error。 */
         private const val UNFINISHED = "the step did not finish before the test ended"
 
-        /** 段階から status を導く（model.py の STEP_FAILURE_PHASES）。 */
+        /** 段階から status を導く。 */
         private fun defaultStatus(phase: TestFailurePhase): TestStatus =
             if (phase in StatusMapper.STEP_FAILURE_PHASES) TestStatus.FAILED else TestStatus.ERROR
     }

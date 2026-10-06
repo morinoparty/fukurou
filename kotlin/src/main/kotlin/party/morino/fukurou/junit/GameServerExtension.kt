@@ -33,6 +33,7 @@ import party.morino.fukurou.server.ServerSpec
 import party.morino.fukurou.server.ServerType
 import party.morino.fukurou.server.paper.Paper
 import java.lang.reflect.Constructor
+import java.util.Locale
 import java.util.Optional
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -91,8 +92,14 @@ public abstract class GameServerExtension :
             return lease.server
         }
 
-    /** プレイヤーの宣言。宣言順 = 参加順。参照すると参加済みの Player（現在のセッションのもの）を返す。 */
-    protected fun player(name: String, op: Boolean = false): PlayerDelegate = PlayerDelegate(PlayerProfile(name, op))
+    /**
+     * プレイヤーの宣言。宣言順 = 参加順。参照すると参加済みの Player（現在のセッションのもの）を返す。
+     *
+     * locale はクライアントの言語（既定は Locale.US = en_us）。クライアントが翻訳して表示する文字列（参加メッセージや
+     * バニラのコマンドの結果など）は、その言語でチャットのログに出る。
+     */
+    protected fun player(name: String, op: Boolean = false, locale: Locale = Locale.US): PlayerDelegate =
+        PlayerDelegate(PlayerProfile(name, op, locale))
 
     // --- モジュール内の橋渡し（protected のメンバーは LeaseRegistry などから呼べないため） ---------------------
 
@@ -128,9 +135,10 @@ public abstract class GameServerExtension :
      * リースを取得（無ければ作って stub の result.json を書き）、サーバーを起動して宣言したプレイヤーを参加させる。
      */
     final override fun beforeAll(context: ExtensionContext) {
-        // Xvfb などが無いホストで skip を選んだなら、run ディレクトリも作らずにクラスごと飛ばす
+        // ホストの道具が無く skip を選んだなら、run ディレクトリも作らずにクラスごと飛ばす。
+        // Xvfb などのクライアントの道具は、プレイヤーを宣言したクラスだけが要る
         if (fukurou().config.missingHost == MissingHostPolicy.SKIP) {
-            HostCheck.problemMessage()?.let { throw TestAbortedException(it) }
+            HostCheck.problemMessage(clients = declared.isNotEmpty())?.let { throw TestAbortedException(it) }
         }
         val lease = LeaseRegistry.leaseFor(this, context)
         // 宣言は最初のインスタンスのものに固定する。クラスごとに違うと参加者が決まらない

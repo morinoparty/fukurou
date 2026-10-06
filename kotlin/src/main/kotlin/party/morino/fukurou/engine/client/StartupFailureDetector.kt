@@ -1,7 +1,7 @@
 package party.morino.fukurou.engine.client
 
 /**
- * クライアントのログから「もう起動できない」状態を見分ける（runner/client_startup.py）。
+ * クライアントのログから「もう起動できない」状態を見分ける。
  *
  * クライアントは描画バックエンドを作れなくてもプロセスが終了せず、そのまま止まることがある
  * （例: 26.3 の renderpearl で OpenGL も Vulkan も作れなかった場合）。プロセスの生死だけを見ていると

@@ -4,7 +4,7 @@ import party.morino.fukurou.server.paper.PaperChannel
 import party.morino.fukurou.version.MinecraftVersion
 import java.util.Locale
 
-/** 使う Paper のビルドを選ぶ（paper.py:56-66,111-128）。純粋。 */
+/** 使う Paper のビルドを選ぶ。純粋。 */
 internal object PaperBuildPicker {
     /** しきい値で許されるビルドのチャンネル（安定している順、大文字）。Alpha なら 3 つすべて。 */
     fun acceptedChannels(threshold: PaperChannel): List<String> =

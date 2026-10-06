@@ -4,7 +4,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Xvfb のディスプレイ番号を JVM の中で重ならないように割り当てる（runner/xvfb.py:72-77）。
+ * Xvfb のディスプレイ番号を JVM の中で重ならないように割り当てる。
  *
  * xvfb-run -a と同様に 99 から順に探し、ロックファイル（/tmp/.X<n>-lock）とソケット（/tmp/.X11-unix/X<n>）が
  * ある番号と、この JVM が既に渡した番号を飛ばす。同時に起動する別のレーンが同じ番号を取らないようにするため。

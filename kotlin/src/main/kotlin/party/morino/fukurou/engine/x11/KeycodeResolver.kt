@@ -7,7 +7,7 @@ import party.morino.fukurou.error.InputException
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * keysym を修飾キーなしで押せるキーコードへ解決する（runner/x11_input.py:108）。キーマップは display ごとにキャッシュする。
+ * keysym を修飾キーなしで押せるキーコードへ解決する。キーマップは display ごとにキャッシュする。
  *
  * keysym 名のまま xdotool に渡すと F5 を Alt+F5 などに解決することがあるため、
  * 修飾キーなしで届く物理キーコード（10 進数）に変換して送る。

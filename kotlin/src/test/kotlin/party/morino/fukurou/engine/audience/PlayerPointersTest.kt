@@ -18,4 +18,11 @@ class PlayerPointersTest {
         assertEquals(Component.text("Alice"), pointers.get(Identity.DISPLAY_NAME).orElseThrow())
         assertEquals(Locale.US, pointers.get(Identity.LOCALE).orElseThrow())
     }
+
+    @Test
+    @DisplayName("The locale pointer is the profile's locale")
+    fun locale() {
+        val pointers = PlayerPointers.of("Alice", OfflineUuid.of("Alice"), Locale.JAPAN)
+        assertEquals(Locale.JAPAN, pointers.get(Identity.LOCALE).orElseThrow())
+    }
 }

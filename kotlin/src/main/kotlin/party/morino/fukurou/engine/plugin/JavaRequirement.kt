@@ -8,7 +8,7 @@ import java.nio.file.Path
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * サーバーに必要な Java と、使う Java の版（plugins.py:115 required_java、java.py:28-50）。
+ * サーバーに必要な Java と、使う Java の版。
  *
  * 判定そのもの（足りなければ SetupException）はどの種類にも共通なので ServerInstance.start が行う。
  */

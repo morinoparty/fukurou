@@ -15,11 +15,12 @@ import party.morino.fukurou.result.model.enums.StepStatus
 import party.morino.fukurou.result.model.step.ParallelInfo
 import party.morino.fukurou.result.output.StatusMapper
 import java.math.BigDecimal
+import java.util.concurrent.ConcurrentHashMap
 import java.time.Instant
 import kotlin.time.Duration
 
 /**
- * 1 ステップを実行して記録する（run/step_executor.py:60-128 StepExecutor.run の移植）。
+ * 1 ステップを実行して記録する。
  *
  * 記録先のテストは StepScope、無ければ実行中のテスト（ActiveTests）から探す。どちらも無ければ実行だけして
  * harness.log に 1 行残す。例外の分類（クライアントの死亡 → client、サーバーの死亡 → サーバーを dead に、
@@ -34,7 +35,7 @@ internal object StepRunner {
      *
      * @param host ステップが属するサーバー（pause のようにサーバーに属さないステップは null）
      * @param on "server" / プレイヤー名 / null
-     * @param action Python と同じアクション名
+     * @param action アクション名（result.json の steps[].action）
      * @param label 一覧表示用の説明
      * @param inputPlayer クライアントへの入力なら、そのプレイヤー（parallel で同じプレイヤーへの入力を 1 レーンに限る）
      * @param screenshotOf 戻り値から screenshot アクションの保存先を取り出す
@@ -51,25 +52,67 @@ internal object StepRunner {
     ): T {
         val scope = StepScope.current()
         val run = resolve(scope, host)
-        return stepIn(run, scope, host, on, action, label, inputPlayer, screenshotOf, body)
+        return stepIn(run, scope, host, on, action, label, inputPlayer, screenshotOf, body = body)
     }
 
     /**
-     * 記録される待ち（action "wait"、on null、label "1.5s"）。テストの残り時間で打ち切る（runner/cancellation.py:17）。
+     * 記録される待ち（action "wait"、on null、label "1.5s"）。テストの残り時間で打ち切る。
      *
      * StepScope が無く実行中のテストが複数ある（1 つのテストを 2 台のサーバーで実行している）ときは、全部に記録する。
      */
     suspend fun pause(duration: Duration) {
+        hostless("wait", "${seconds(duration)}s") { delay(duration) }
+    }
+
+    /**
+     * サーバーに属さないステップ（on null。wait・step・eventually・await_until）を実行して記録する。
+     *
+     * StepScope があればその記録先だけ、無ければ（または StepScope.implicit なら）実行中のテストすべてに記録する
+     * （§1.8。1 つのテストを 2 台のサーバーで実行しているときは両方に載る）。記録先ごとに入れ子のステップにし、body 自体は 1 回だけ実行する。
+     */
+    suspend fun <T> hostless(action: String, label: String, body: suspend () -> T): T = anchored(action, label) { body() }
+
+    /**
+     * hostless と同じく実行して記録し、body には記録先のテスト → そのテストでのこのステップの仮 id を渡す
+     * （eventually / awaitUntil が試行の中のスクリーンショットを自分のステップに結びつけるのに使う）。
+     * 記録しなかった（quiet の中・テストの外）テストは含まない。
+     */
+    suspend fun <T> anchored(action: String, label: String, body: suspend (anchors: Map<TestRun, Long>) -> T): T {
         val scope = StepScope.current()
-        // スコープがあればその記録先だけ。無ければ実行中のテストすべて（§1.8）
-        val runs = if (scope != null) listOfNotNull(scope.run) else ActiveTests.all()
-        val label = "${seconds(duration)}s"
-        // 記録先ごとに入れ子のステップにし、待ち自体は 1 回だけにする
-        val wait: suspend () -> Unit = { delay(duration) }
-        val nested = runs.fold(wait) { inner, run ->
-            { stepIn(run, scope, run.host, null, "wait", label, null, { null }) { _, _ -> inner() } }
+        // スコープがあればその記録先だけ。無ければ実行中のテストすべて（§1.8）。repeat / parallel が
+        // スコープの無いところで作ったスコープ（implicit）も、無いときと同じに扱う
+        val runs = if (scope != null && !scope.implicit) listOfNotNull(scope.run) else ActiveTests.all()
+        // 外側の記録先から順に仮 id を取るので、body が走るときには全部そろっている
+        val anchors = ConcurrentHashMap<TestRun, Long>()
+        val nested = runs.fold(suspend { body(anchors) }) { inner, run ->
+            {
+                stepIn(run, scope, run.host, null, action, label, null, { null }, hostless = true) { _, id ->
+                    if (id != null) anchors[run] = id
+                    inner()
+                }
+            }
         }
-        nested()
+        return nested()
+    }
+
+    /**
+     * スクリーンショットの名前を取り、結びつけるステップの仮 id を返す。
+     *
+     * 記録するステップ（stepId が null でない）ではそのステップに結びつけ、同じテスト・プレイヤーで名前の重複を許さない。
+     * 記録しない試行（eventually / awaitUntil の中、stepId が null）では、同じブロックの中での撮り直しを許し
+     * （後の試行が上書きする）、ブロック自身のステップに結びつける（無ければ null。どのステップにも結びつけない）。
+     *
+     * @throws IllegalArgumentException 別のステップ・ブロックが同じ名前を使った
+     */
+    suspend fun claimScreenshot(run: TestRun, player: String, name: String, stepId: Long?): Long? {
+        if (stepId != null) {
+            run.claimScreenshot(player, name, stepId)
+            return stepId
+        }
+        val block = StepScope.current()?.quietBlock
+        // quiet の外で仮 id が無いことは無いが、そのときもどのステップにも結びつけずに撮る
+        run.claimScreenshot(player, name, block ?: Any())
+        return block?.anchorFor(run)
     }
 
     /**
@@ -78,6 +121,14 @@ internal object StepRunner {
     fun <T> instant(host: StepHost?, on: String?, action: String, label: String, body: () -> T): T {
         val scope = StepScope.currentBlocking()
         val run = resolve(scope, host) ?: return body().also { host?.log("step outside a test: $action on ${on ?: "-"}: $label") }
+        if (scope?.quiet == true) {
+            // eventually の試行。記録はせず、例外の分類だけをする
+            return try {
+                body()
+            } catch (error: Throwable) {
+                throw classifyQuiet(run, error)
+            }
+        }
         val lane = scope?.lane
         val event = begin(run, scope, on, action, label)
         val started = System.nanoTime()
@@ -92,6 +143,9 @@ internal object StepRunner {
 
     /**
      * 記録先 run を決めてステップを実行する。
+     *
+     * @param hostless サーバーに属さないステップ（hostless）。中のステップの例外がそのまま通り抜けるだけなので、
+     *   サーバーの死亡を自分の記録先のサーバーのものとしない（2 台目のサーバーの死亡で 1 台目まで dead にしない）
      */
     private suspend fun <T> stepIn(
         run: TestRun?,
@@ -102,6 +156,7 @@ internal object StepRunner {
         label: String,
         inputPlayer: String?,
         screenshotOf: (T) -> String?,
+        hostless: Boolean = false,
         body: suspend (TestRun?, Long?) -> T,
     ): T {
         if (run == null) {
@@ -109,8 +164,9 @@ internal object StepRunner {
             host?.log("step outside a test: $action on ${on ?: "-"}: $label")
             return body(null, null)
         }
+        if (scope?.quiet == true) return quietStep(run, scope, inputPlayer, body)
         val runHost = run.host
-        // 期限を過ぎていれば、ステップを始めずにテストを timeout にする（suite_run.py:403-406）
+        // 期限を過ぎていれば、ステップを始めずにテストを timeout にする
         run.deadline.check(run.stepCount.toInt())
         val event = begin(run, scope, on, action, label)
         val block = scope?.block
@@ -120,7 +176,7 @@ internal object StepRunner {
             val result = try {
                 // ステップ 1 つもテストの残り時間を超えて待たない（どの待ちも期限で打ち切る、§4.11）
                 withTimeout(run.deadline.remaining()) {
-                    // ステップの前に全員の生存を確かめる（scenario_runner.py:114）。死んでいれば client の失敗として記録される
+                    // ステップの前に全員の生存を確かめる。死んでいれば client の失敗として記録される
                     runHost.checkClientsAlive()
                     if (inputPlayer != null && block != null && lane != null) block.guard.onInput(inputPlayer, lane)
                     body(run, event.provisionalId)
@@ -135,7 +191,7 @@ internal object StepRunner {
             finish(run, event, StepStatus.PASSED, started, null, screenshotOf(result))
             return result
         } catch (cancelled: CancellationException) {
-            // ステップ自身の失敗ではないので死亡の判定はしない（step_executor.py:95）
+            // ステップ自身の失敗ではないので死亡の判定はしない
             if (block?.cancelReason != null || run.deadline.isExceeded) {
                 // ハーネスが打ち切った（parallel の期限切れ・兄弟のレーンでのサーバーの死亡）。テストの失敗の候補にする
                 val reason = block?.cancelReason ?: cancelled.message ?: "cancelled"
@@ -151,9 +207,63 @@ internal object StepRunner {
             }
             throw cancelled
         } catch (error: Throwable) {
-            throw classify(run, event, started, error)
+            throw classify(run, event, started, error, hostless)
         } finally {
             if (lane != null) block?.stepEnded(lane, event)
+        }
+    }
+
+    /**
+     * 記録しないステップ（eventually / awaitUntil の試行）。
+     *
+     * 記録しないだけで、期限の確認・期限での打ち切り・クライアントの生存の確認・レーンの入力の規則・
+     * 例外の分類（サーバーの死亡 → serverDied、入力の失敗の後のクライアントの死亡）は記録するステップと同じにする。
+     * 本体には仮 id を渡さない（null）。
+     */
+    private suspend fun <T> quietStep(
+        run: TestRun,
+        scope: StepScope,
+        inputPlayer: String?,
+        body: suspend (TestRun?, Long?) -> T,
+    ): T {
+        run.deadline.check(run.stepCount.toInt())
+        val block = scope.block
+        val lane = scope.lane
+        try {
+            return try {
+                withTimeout(run.deadline.remaining()) {
+                    run.host.checkClientsAlive()
+                    if (inputPlayer != null && block != null && lane != null) block.guard.onInput(inputPlayer, lane)
+                    body(run, null)
+                }
+            } catch (timeout: TimeoutCancellationException) {
+                if (!run.deadline.isExceeded) throw timeout
+                throw HarnessTimeoutException(
+                    "the test exceeded its timeout of ${run.deadline.timeout.inWholeSeconds}s during a retried attempt",
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            // 取り消しは外側の記録するステップ（eventually など）が扱う
+            throw cancelled
+        } catch (error: Throwable) {
+            throw classifyQuiet(run, error)
+        }
+    }
+
+    /**
+     * 記録しないステップの例外を classify と同じ規則で分類し、副作用（serverDied）だけを起こして投げ直す例外を返す。
+     */
+    private fun classifyQuiet(run: TestRun, error: Throwable): Throwable {
+        val host = run.host
+        return when (error) {
+            is ClientDiedException, is HarnessTimeoutException -> error
+            is ServerUnavailableException -> error.also { host.serverDied(it) }
+            else -> {
+                val died = host.deadClient() ?: return error
+                host.warn("retried attempt: ${died.message} (after: ${StatusMapper.messageOf(error)})")
+                died.addSuppressed(error)
+                died
+            }
         }
     }
 
@@ -190,9 +300,11 @@ internal object StepRunner {
             startedAt = Instant.now(),
             // 別のサーバーのテストに記録するときは、そのテストでのブロック番号を使う
             parallel = if (block != null && lane != null) ParallelInfo(block.indexFor(run), lane) else null,
+            repeat = scope?.repeat?.infoFor(run),
         )
-        // ログには Python と同じく層とレーンの位置を残す
-        val position = event.parallel?.let { ", parallel ${it.block} lane ${it.lane}" }.orEmpty()
+        // ログには層とレーンの位置を残す
+        val position = event.parallel?.let { ", parallel ${it.block} lane ${it.lane}" }.orEmpty() +
+            event.repeat?.let { ", repeat ${it.block} ${it.iteration}/${it.of}" }.orEmpty()
         run.host.log("step ${event.provisionalId} (${event.phase.name.lowercase()}$position): $action on ${on ?: "-"}: $label")
         run.host.observer.stepStarted(run.testId, event)
         if (block != null && lane != null) block.stepStarted(lane, run, event)
@@ -220,9 +332,9 @@ internal object StepRunner {
     }
 
     /**
-     * ステップの失敗を分類して記録し、呼び出し元へ投げ直す例外を返す（step_executor.py:95-128）。
+     * ステップの失敗を分類して記録し、呼び出し元へ投げ直す例外を返す。
      */
-    private fun classify(run: TestRun, event: StepEvent, startedNanos: Long, error: Throwable): Throwable {
+    private fun classify(run: TestRun, event: StepEvent, startedNanos: Long, error: Throwable, hostless: Boolean = false): Throwable {
         val host = run.host
         return when (error) {
             // クライアントの死亡は phase client（プラグインの失敗ではない）
@@ -230,7 +342,8 @@ internal object StepRunner {
             // サーバーの死亡: ステップを失敗にし、サーバーを dead にして投げ直す（以後のテストは skipped）
             is ServerUnavailableException -> error.also {
                 record(run, event, startedNanos, it, it.message.orEmpty())
-                host.serverDied(it)
+                // サーバーに属さないステップでは、死んだサーバーの中のステップが既に serverDied を呼んでいる
+                if (!hostless) host.serverDied(it)
             }
             // 期限切れは timeout（StatusMapper が HarnessTimeoutException から決める）
             is HarnessTimeoutException -> error.also { record(run, event, startedNanos, it, it.message.orEmpty()) }
@@ -258,7 +371,7 @@ internal object StepRunner {
         run.stepFailed(failed, error)
     }
 
-    /** Python の %g と同じく、末尾の 0 を落とした秒数（1.5、0.25、2）。 */
+    /** 末尾の 0 を落とした秒数（1.5、0.25、2）。 */
     fun seconds(duration: Duration): String =
         BigDecimal.valueOf(duration.inWholeNanoseconds, NANO_SCALE).stripTrailingZeros().toPlainString()
 

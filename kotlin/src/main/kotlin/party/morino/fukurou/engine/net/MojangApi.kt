@@ -11,7 +11,7 @@ import kotlinx.serialization.json.intOrNull
 import party.morino.fukurou.error.SetupException
 
 /**
- * Mojang のバージョンマニフェストと、バージョンごとの必要な Java（mojang.py:47-60）。
+ * Mojang のバージョンマニフェストと、バージョンごとの必要な Java。
  *
  * マニフェストはインスタンスごとに 1 回だけ取得し、バージョンごとの結果も覚えておく。
  *

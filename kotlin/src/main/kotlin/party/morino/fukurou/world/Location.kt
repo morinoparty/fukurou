@@ -26,7 +26,7 @@ public data class Location(
         require((yaw == null) == (pitch == null)) { "yaw and pitch must be given together" }
     }
 
-    /** 純粋: "0.5 -49 0.5 0 30"。Python の :g と同じく末尾の 0 を落とす。 */
+    /** 純粋: "0.5 -49 0.5 0 30"。末尾の 0 を落とす。 */
     public fun toCommandArgs(): String {
         val coordinates = listOf(x, y, z).map { format(BigDecimal.valueOf(it)) }
         // Float は toString 経由で BigDecimal にし、0.1f が 0.10000000149… にならないようにする

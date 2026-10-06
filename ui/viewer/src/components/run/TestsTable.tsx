@@ -3,7 +3,6 @@ import { css } from "styled-system/css";
 import { Table } from "../../chlorophyll";
 import type { ManifestRun, TestResult } from "../../contract";
 import { formatDuration } from "../../lib/format";
-import { testLabel } from "../../lib/runs";
 import { Hint } from "../Hint";
 import { StatusBadge } from "../StatusBadge";
 
@@ -12,7 +11,8 @@ const failedRow = css({ bg: "bg.error", _hover: { bg: "bg.error" } });
 const skippedRow = css({ color: "fg.muted" });
 const numberCell = css({ fontVariantNumeric: "tabular-nums", color: "fg.muted", width: "1%" });
 const durationCell = css({ fontVariantNumeric: "tabular-nums", textAlign: "end", whiteSpace: "nowrap" });
-const name = css({ fontWeight: "semibold" });
+const name = css({ fontWeight: "semibold", overflowWrap: "anywhere" });
+const idText = css({ fontFamily: "mono", overflowWrap: "anywhere" });
 const meta = css({ mt: "0.5", fontSize: "xs", color: "fg.muted", display: "flex", flexWrap: "wrap", gap: "1" });
 const tag = css({ px: "1.5", borderRadius: "xs", bg: "bg.muted" });
 const failure = css({
@@ -54,9 +54,10 @@ export function TestsTable({ run, tests }: TestsTableProps) {
               <Table.Cell className={numberCell}>{test.order}</Table.Cell>
               <Table.Cell className={css({ minWidth: "12rem" })}>
                 <Link to="/runs/$runId/tests/$testId" params={{ runId: run.id, testId: test.id }} className={name}>
-                  {testLabel(test)}
+                  {test.name || test.id}
                 </Link>
                 <div className={meta}>
+                  {test.name && test.name !== test.id && <span className={idText}>{test.id} ·</span>}
                   <span>{test.isolation}</span>
                   {test.session !== null && <span>· session {test.session}</span>}
                   {test.tags.map((tagName) => (

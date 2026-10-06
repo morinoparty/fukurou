@@ -13,20 +13,18 @@ import party.morino.fukurou.version.MinecraftVersion
  * Paper サーバー。properties は DEFAULT_PROPERTIES の上に重ねる（fukurou が管理するキーは上書きできない）。
  *
  * @property version Minecraft のバージョン
- * @property channel 受け入れる最も不安定なチャンネル（paper.py:56 accepted_channels）
+ * @property channel 受け入れる最も不安定なチャンネル
  * @property build 固定するビルド。チャンネルがしきい値より不安定でも警告して使う
  * @property properties server.properties の上書き
+ * @property agent サーバー内エージェント（FukurouAgent）を入れるか。false なら状態の取得・イベント・execute は使えない
  */
 public data class Paper(
     val version: MinecraftVersion,
     val channel: PaperChannel = PaperChannel.Stable,
     val build: Int? = null,
     val properties: Map<String, String> = emptyMap(),
+    val agent: Boolean = true,
 ) : ServerType {
-    /** バージョンを文字列で指定する。 */
-    public constructor(version: String, channel: PaperChannel = PaperChannel.Stable, build: Int? = null) :
-        this(MinecraftVersion(version), channel, build)
-
     override val id: String get() = "paper"
 
     override val minecraftVersion: MinecraftVersion get() = version
@@ -38,6 +36,20 @@ public data class Paper(
     override fun createPlatform(services: PlatformServices): ServerPlatform = PaperPlatform(this, services)
 
     public companion object {
+        /**
+         * バージョンを文字列で指定する（Paper("1.21.11", agent = false)）。ほかの引数は主コンストラクタと同じ。
+         *
+         * MinecraftVersion は JVM では String なので、同じ引数のコンストラクタは主コンストラクタとシグネチャが衝突する。
+         * そのため invoke で用意する。
+         */
+        public operator fun invoke(
+            version: String,
+            channel: PaperChannel = PaperChannel.Stable,
+            build: Int? = null,
+            properties: Map<String, String> = emptyMap(),
+            agent: Boolean = true,
+        ): Paper = Paper(MinecraftVersion(version), channel, build, properties, agent)
+
         /**
          * fukurou.minecraftVersion / fukurou.paperChannel / fukurou.paperBuild を読む。
          * version が無く defaultVersion も null なら SetupException。

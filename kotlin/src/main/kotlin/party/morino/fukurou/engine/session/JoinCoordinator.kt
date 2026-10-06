@@ -7,6 +7,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import party.morino.fukurou.engine.client.StartupFailureDetector
 import party.morino.fukurou.engine.log.LogWindow
+import party.morino.fukurou.engine.process.HostCheck
 import party.morino.fukurou.error.HarnessTimeoutException
 import party.morino.fukurou.error.SetupException
 import kotlin.time.Duration
@@ -14,7 +15,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 /**
- * クライアントを起動し、サーバーログに参加の行が出るまで待つ（run/session.py:99-141 join の移植）。
+ * クライアントを起動し、サーバーログに参加の行が出るまで待つ。
  *
  * 同時に起動すると CPU を取り合って読み込みが大幅に遅くなるので、JVM 全体で 1 台ずつ起動する（サーバーをまたいでも）。
  */
@@ -22,18 +23,20 @@ internal object JoinCoordinator {
     /** JVM 全体で 1 台ずつ起動するための公平なゲート。 */
     private val GATE = Semaphore(1)
 
-    /** 参加の行を確かめる間隔（session.py:32）。 */
+    /** 参加の行を確かめる間隔。 */
     private val POLL: Duration = 1.seconds
 
     /**
      * player を server に参加させる。
      *
      * @throws party.morino.fukurou.error.ClientDiedException クライアントが途中で終わった
-     * @throws SetupException クライアントの描画を始められない（lavapipe が無いなど）
+     * @throws SetupException ホストにクライアントの道具が無い、またはクライアントの描画を始められない（lavapipe が無いなど）
      * @throws party.morino.fukurou.error.ServerUnavailableException サーバーが途中で終わった
      * @throws HarnessTimeoutException 期限までに参加しなかった
      */
     suspend fun join(server: ServerInstance, player: PlayerSession) {
+        // Xvfb などはクライアントを起動するときに初めて要る（プレイヤーの無いサーバーは無くても動く）
+        HostCheck.ensureClients()
         player.ensureInstalled()
         GATE.withPermit {
             val name = player.name

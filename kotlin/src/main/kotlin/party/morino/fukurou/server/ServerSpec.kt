@@ -19,22 +19,22 @@ public class ServerSpec internal constructor(public val type: ServerType) {
     /** テスト同士の隔離方法。 */
     public var isolation: Isolation = Isolation.Reset()
 
-    /** サーバーの起動を待つ時間（session.py:28）。 */
+    /** サーバーの起動を待つ時間。 */
     public var startTimeout: Duration = 600.seconds
 
-    /** クライアントのインストール（portablemc --dry）を待つ時間（suite_run.py:50）。 */
+    /** クライアントのインストール（portablemc --dry）を待つ時間。 */
     public var installTimeout: Duration = 900.seconds
 
-    /** 参加を待つ時間。最初のウィンドウの待ちにも使う（session.py:29）。 */
+    /** 参加を待つ時間。最初のウィンドウの待ちにも使う。 */
     public var joinTimeout: Duration = 900.seconds
 
     /** テスト 1 件の期限（ソフトデッドライン、§4.11）。 */
     public var testTimeout: Duration = 600.seconds
 
-    /** サーバーの -Xmx（server/process.py:13 HEAP）。 */
+    /** サーバーの -Xmx。 */
     public var serverHeap: String = "2G"
 
-    /** クライアントの -Xmx（client.py:105）。 */
+    /** クライアントの -Xmx。 */
     public var clientHeap: String = "1536M"
 
     /** 宣言したプラグイン（宣言順）。 */

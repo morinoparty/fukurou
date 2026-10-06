@@ -6,7 +6,7 @@ import party.morino.fukurou.error.InputException
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * 指定ディスプレイに対して xdotool を実行する（runner/x11_input.py:86-106）。
+ * 指定ディスプレイに対して xdotool を実行する。
  *
  * プレイヤーごとに別のディスプレイを使うため、DISPLAY は呼び出しごとに子プロセスの環境へ渡す。
  */

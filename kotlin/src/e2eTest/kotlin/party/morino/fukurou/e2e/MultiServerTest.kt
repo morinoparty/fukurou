@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import party.morino.fukurou.eventually
 import party.morino.fukurou.pause
 import party.morino.fukurou.player.Player
 import party.morino.fukurou.server.GameServer
@@ -20,7 +21,7 @@ import kotlin.time.Duration.Companion.seconds
  * 1 つのテストクラスに 2 種類の拡張（LobbyArena と DuelArena）を登録し、本物の Paper を 2 台同時に動かす。
  * Xvfb などが要るので CI の kotlin-e2e ジョブだけで実行する（check には含めない）。
  *
- * 拡張が 2 つあると GameServer の引数はどちらか決まらないので、拡張の型で受け取る（§5.4）。
+ * 拡張が 2 つあると GameServer の引数はどちらか決まらないので、拡張の型で受け取る。
  * 1 件のテストが両方のサーバーで記録されるので、result.json は label ごとに 1 つ（lobby と duel）でき、それぞれ 1 件になる。
  */
 @ExtendWith(LobbyArena::class)
@@ -42,6 +43,8 @@ class MultiServerTest {
         assertSame(lobbyServer, carol.server)
         assertSame(duelServer, dave.server)
         assertEquals(listOf("Carol"), lobbyServer.players.map { it.name })
+        // Carol のクライアントは ja_jp で起動する（options.txt の lang）。参加の直後は既定の en_us のことがあるので待つ
+        eventually { assertEquals("ja_jp", carol.state().locale, "Carol's client language seen by the server") }
         assertEquals(listOf("Dave"), duelServer.players.map { it.name })
 
         // 各サーバーの RCON のコマンドは、そのサーバーのプレイヤーにだけ届く
@@ -90,7 +93,7 @@ class MultiServerTest {
         outsider.assertNoChat(pattern, after = outsiderMark)
     }
 
-    /** 足場を置き、昼・晴れにする（examples/fukurou.yml の platform と同じ考え方）。 */
+    /** 足場を置き、昼・晴れにする（スクリーンショットが奈落や夜空を写さないように）。 */
     private suspend fun prepareStage(server: GameServer, block: String) {
         server.fill(BlockPos(-3, -61, -3), BlockPos(3, -61, 3), block)
         server.time(6000)

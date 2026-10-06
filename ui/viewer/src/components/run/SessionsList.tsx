@@ -10,7 +10,7 @@ import { buttonLink, codeBlockStyle, panelStyle } from "../../styles";
 const card = css(panelStyle, { p: "3", display: "flex", flexDirection: "column", gap: "2" });
 const head = css({ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "2" });
 const kind = css({ px: "1.5", borderRadius: "xs", bg: "bg.muted", color: "fg.muted", fontSize: "xs" });
-const meta = css({ fontSize: "xs", color: "fg.muted" });
+const meta = css({ fontSize: "xs", color: "fg.muted", overflowWrap: "anywhere" });
 const failure = css(codeBlockStyle, { color: "fg.error" });
 const logsRow = css({ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "2" });
 

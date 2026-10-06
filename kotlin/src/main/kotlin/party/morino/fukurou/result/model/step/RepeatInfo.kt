@@ -3,7 +3,7 @@ package party.morino.fukurou.result.model.step
 import kotlinx.serialization.Serializable
 
 /**
- * repeat ブロックの何回目のステップか。Kotlin 版は repeat を記録しない（常に null）が、契約の型として持つ。
+ * repeat ブロックの何回目のステップか（party.morino.fukurou.repeat の中のステップに付く）。
  *
  * @property block テスト内の repeat ブロックの通し番号
  * @property iteration 1 始まりの繰り返し番号

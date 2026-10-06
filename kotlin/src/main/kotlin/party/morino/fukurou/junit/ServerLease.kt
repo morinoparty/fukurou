@@ -57,7 +57,7 @@ internal class ServerLease private constructor(
     var lastUsed: Long = 0
         private set
 
-    /** 起動（または参加）の失敗。あれば以後のクラスにもそのまま返す（Python と同じく再試行しない）。 */
+    /** 起動（または参加）の失敗。あれば以後のクラスにもそのまま返す（再試行しない）。 */
     @Volatile
     var startFailure: Throwable? = null
         private set
@@ -194,7 +194,7 @@ internal class ServerLease private constructor(
         try {
             if (!started) {
                 server.start(SessionKind.INITIAL)
-                // 参加より前に全員のクライアントをインストールする（suite_run.py:277）
+                // 参加より前に全員のクライアントをインストールする
                 phase = RunFailurePhase.CLIENT_JOIN
                 server.install(players)
                 players.forEach { server.join(it) }

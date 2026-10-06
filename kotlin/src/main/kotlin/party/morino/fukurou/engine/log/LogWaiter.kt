@@ -13,9 +13,9 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
-/** ログに pattern が出るまで 0.5 s ごとに見る（runner/scenario_runner.py:159-182）。 */
+/** ログに pattern が出るまで 0.5 s ごとに見る。 */
 internal object LogWaiter {
-    /** 読み足す間隔（scenario_runner.py LOG_POLL_SECONDS）。 */
+    /** 読み足す間隔。 */
     val POLL_INTERVAL: Duration = 500.milliseconds
 
     /**
@@ -46,7 +46,7 @@ internal object LogWaiter {
         deadline: TestDeadline?,
         io: CoroutineContext = Dispatchers.IO,
     ): LogMatch {
-        // Python と同じく複数行のテキストの中で ^ $ を行ごとに効かせる
+        // 複数行のテキストの中で ^ $ を行ごとに効かせる
         val compiled = pattern.multiline()
         // 上限は最初に一度だけ決める。待ちは仮想時間でも進む withTimeoutOrNull で切る
         val remaining = deadline?.remaining()

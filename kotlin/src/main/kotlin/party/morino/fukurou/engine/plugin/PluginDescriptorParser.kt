@@ -1,7 +1,7 @@
 package party.morino.fukurou.engine.plugin
 
 /**
- * plugin.yml / paper-plugin.yml から、最上位の name・version・prefix のスカラーだけを読む（plugins.py:91 read_descriptor）。
+ * plugin.yml / paper-plugin.yml から、最上位の name・version・prefix のスカラーだけを読む。
  *
  * YAML のライブラリを使わない代わりに、値は数値にせず文字列のまま扱う（BaseLoader と同じく version: 1.10 は "1.10"）。
  */
@@ -45,7 +45,7 @@ internal object PluginDescriptorParser {
                     .ifEmpty { null }
             }
             '[', '{' -> {
-                // フローの列やマップはスカラーではない（Python の _optional_str も None にする）。閉じていなければ壊れている
+                // フローの列やマップはスカラーではないので値なしとして扱う。閉じていなければ壊れている
                 val close = if (value[0] == '[') ']' else '}'
                 require(stripComment(value).endsWith(close)) { "unterminated flow value for '$key'" }
                 null

@@ -1,9 +1,9 @@
 package party.morino.fukurou.version
 
 /**
- * "1.21.9"（単一）/ "1.21.6-"（上限なし）/ "1.21.6-1.21.11"（両端を含む）形式の範囲（versions.py parse_spec の移植）。
+ * "1.21.9"（単一）/ "1.21.6-"（上限なし）/ "1.21.6-1.21.11"（両端を含む）形式の範囲。
  *
- * @MinecraftVersions が使う。Python 版と違いマニフェストを使わず、[MinecraftVersion] の順序で判定する。
+ * @MinecraftVersions が使う。マニフェストを使わず、[MinecraftVersion] の順序で判定する。
  *
  * @property lower 下限（含む）
  * @property upper 上限（含む）。null なら上限なし
@@ -25,7 +25,7 @@ public class VersionSpec private constructor(
         /** "latest" はチャンネル（通信）が無いと決まらないため受け付けない。 */
         private const val LATEST = "latest"
 
-        /** 構文を検証して分解する。不正なら IllegalArgumentException（Python の VersionError と同じ文言）。 */
+        /** 構文を検証して分解する。不正なら IllegalArgumentException。 */
         public fun parse(spec: String): VersionSpec {
             val text = spec.trim()
             require(text.isNotEmpty()) { "the version spec is empty" }
