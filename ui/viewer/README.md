@@ -52,26 +52,9 @@ The fixture test `stamp-burst` in `ui/fixtures/artifacts/fukurou-paper-1.21.10` 
 
 ## Development
 
-Requirements: Node.js 20.19+ or 22.12+, pnpm, and a GitHub token that can read packages (`read:packages`).
+Requirements: Node.js 20.19+ or 22.12+ and pnpm. `@morinoparty/chlorophyll-react` is published to the public npm registry, so installing needs no token.
 
-### Registry access for Chlorophyll
-
-`@morinoparty/chlorophyll-react` is published to GitHub Packages, which always needs a token, even for public packages. [`.npmrc`](.npmrc) routes the `@morinoparty` scope to `https://npm.pkg.github.com` and references the token only as `${NODE_AUTH_TOKEN}`; never commit a token.
-
-pnpm (12 and later) does not expand environment variables in credentials that come from a repository's `.npmrc`; it warns `Ignored project-level auth setting` and skips them. Put the same line in your user config instead:
-
-```sh
-# once: ~/.npmrc (pnpm expands ${NODE_AUTH_TOKEN} there)
-echo '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}' >> ~/.npmrc
-
-# per shell: a token with read:packages, for example from the GitHub CLI
-# (gh auth refresh -s read:packages if your gh token lacks the scope)
-export NODE_AUTH_TOKEN="$(gh auth token)"
-```
-
-In CI, the `ui` job has `permissions: packages: read`, and `actions/setup-node` with `registry-url: https://npm.pkg.github.com` writes that line to the runner's user config; `NODE_AUTH_TOKEN` is the job's `GITHUB_TOKEN`.
-
-[`pnpm-workspace.yaml`](pnpm-workspace.yaml) allows Chlorophyll 0.4.8 despite pnpm's minimum release age and skips esbuild's postinstall (its binary comes from an optional dependency).
+[`pnpm-workspace.yaml`](pnpm-workspace.yaml) allows Chlorophyll 0.5.0 despite pnpm's minimum release age and skips esbuild's postinstall (its binary comes from an optional dependency).
 
 ### Run
 
